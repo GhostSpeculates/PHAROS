@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd C:\\\\Users\\\\ruben\\\\OneDrive\\\\Desktop\\\\PHAROS:*)",
+      "Bash(cd \"C:\\\\Users\\\\ruben\\\\OneDrive\\\\Desktop\\\\PHAROS\" && npx tsc --noEmit 2>&1)",
+      "Bash(head:*)",
+      "Bash(cd \"C:\\\\Users\\\\ruben\\\\OneDrive\\\\Desktop\\\\PHAROS\" && npx vitest run 2>&1)",
+      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && npm test 2>&1)"
+    ]
+  }
+}
