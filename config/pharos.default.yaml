@@ -1,0 +1,151 @@
+# ============================================
+# PHAROS — Default Configuration
+# ============================================
+# This is the default routing config. Copy to pharos.yaml to customize.
+
+server:
+  port: 3777
+  host: "0.0.0.0"
+
+# Your Pharos API key — clients must send this to authenticate
+# Can also be set via PHAROS_API_KEY env var
+auth:
+  apiKey: ""
+
+# The model used to classify query complexity (free tier)
+classifier:
+  provider: google
+  model: gemini-2.0-flash
+  # Fallback tier if classifier fails (free | economical | premium | frontier)
+  fallbackTier: economical
+  # Max time to wait for classification (ms)
+  timeoutMs: 5000
+
+# Routing tiers — score ranges map to model pools
+tiers:
+  free:
+    scoreRange: [1, 3]
+    models:
+      - provider: google
+        model: gemini-2.0-flash
+      - provider: groq
+        model: llama-3.3-70b-versatile
+
+  economical:
+    scoreRange: [4, 6]
+    models:
+      - provider: deepseek
+        model: deepseek-chat
+      - provider: mistral
+        model: mistral-large-latest
+      - provider: groq
+        model: llama-3.3-70b-versatile
+
+  premium:
+    scoreRange: [7, 8]
+    models:
+      - provider: anthropic
+        model: claude-sonnet-4-20250514
+      - provider: openai
+        model: gpt-4o
+      - provider: google
+        model: gemini-2.5-pro
+
+  frontier:
+    scoreRange: [9, 10]
+    models:
+      - provider: anthropic
+        model: claude-opus-4-20250514
+      - provider: openai
+        model: o3
+      - provider: anthropic
+        model: claude-sonnet-4-20250514
+
+# Provider configurations — API keys loaded from env vars
+providers:
+  anthropic:
+    apiKeyEnv: ANTHROPIC_API_KEY
+    timeoutMs: 30000
+    healthCooldownMs: 60000
+  google:
+    apiKeyEnv: GOOGLE_AI_API_KEY
+    timeoutMs: 30000
+    healthCooldownMs: 60000
+  openai:
+    apiKeyEnv: OPENAI_API_KEY
+    baseUrl: https://api.openai.com/v1
+    timeoutMs: 30000
+    healthCooldownMs: 60000
+  deepseek:
+    apiKeyEnv: DEEPSEEK_API_KEY
+    baseUrl: https://api.deepseek.com/v1
+    timeoutMs: 30000
+    healthCooldownMs: 60000
+  groq:
+    apiKeyEnv: GROQ_API_KEY
+    baseUrl: https://api.groq.com/openai/v1
+    timeoutMs: 30000
+    healthCooldownMs: 60000
+  mistral:
+    apiKeyEnv: MISTRAL_API_KEY
+    baseUrl: https://api.mistral.ai/v1
+    timeoutMs: 30000
+    healthCooldownMs: 60000
+
+# Model pricing — cost per million tokens (input/output)
+# These override the hardcoded defaults in the cost calculator
+pricing:
+  # ─── Free Tier ───
+  - provider: google
+    model: gemini-2.0-flash
+    inputCostPerMillion: 0
+    outputCostPerMillion: 0
+  - provider: groq
+    model: llama-3.3-70b-versatile
+    inputCostPerMillion: 0.59
+    outputCostPerMillion: 0.79
+  # ─── Economical Tier ───
+  - provider: deepseek
+    model: deepseek-chat
+    inputCostPerMillion: 0.14
+    outputCostPerMillion: 0.28
+  - provider: mistral
+    model: mistral-large-latest
+    inputCostPerMillion: 2.0
+    outputCostPerMillion: 6.0
+  # ─── Premium Tier ───
+  - provider: anthropic
+    model: claude-sonnet-4-20250514
+    inputCostPerMillion: 3.0
+    outputCostPerMillion: 15.0
+  - provider: openai
+    model: gpt-4o
+    inputCostPerMillion: 2.5
+    outputCostPerMillion: 10.0
+  - provider: google
+    model: gemini-2.5-pro
+    inputCostPerMillion: 1.25
+    outputCostPerMillion: 10.0
+  # ─── Frontier Tier ───
+  - provider: anthropic
+    model: claude-opus-4-20250514
+    inputCostPerMillion: 15.0
+    outputCostPerMillion: 75.0
+  - provider: openai
+    model: o3
+    inputCostPerMillion: 10.0
+    outputCostPerMillion: 40.0
+
+# Cost tracking
+tracking:
+  enabled: true
+  # Where to store the SQLite database
+  dbPath: ./data/pharos.db
+  # Baseline model for savings calculation
+  baselineModel: claude-sonnet-4-20250514
+  baselineCostPerMillionInput: 3.0
+  baselineCostPerMillionOutput: 15.0
+
+logging:
+  level: info
+  pretty: true

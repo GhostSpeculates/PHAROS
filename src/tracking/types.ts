@@ -1,0 +1,32 @@
+/**
+ * Types for request tracking and cost calculation.
+ */
+
+export interface RequestRecord {
+    id: string;
+    timestamp: string;
+    tier: string;
+    provider: string;
+    model: string;
+    classificationScore: number;
+    classificationType: string;
+    classificationLatencyMs: number;
+    tokensIn: number;
+    tokensOut: number;
+    estimatedCost: number;
+    baselineCost: number;
+    savings: number;
+    totalLatencyMs: number;
+    stream: boolean;
+    isDirectRoute: boolean;
+}
+
+export interface CostSummary {
+    totalRequests: number;
+    totalCost: number;
+    totalBaselineCost: number;
+    totalSavings: number;
+    savingsPercent: number;
+    byTier: Record<string, { count: number; cost: number }>;
+    byProvider: Record<string, { count: number; cost: number }>;
+}
