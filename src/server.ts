@@ -84,8 +84,28 @@ export async function createServer(config: PharosConfig): Promise<{
         },
         stop: async () => {
             logger.info('Shutting down Pharos...');
+
+            // Close Fastify first — this drains in-flight requests
+            // (Fastify's close() stops accepting new connections and waits
+            //  for existing ones to finish before resolving.)
+            const SHUTDOWN_TIMEOUT_MS = 15_000;
+            try {
+                await Promise.race([
+                    app.close(),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Shutdown timeout')), SHUTDOWN_TIMEOUT_MS),
+                    ),
+                ]);
+            } catch (err) {
+                logger.warn(
+                    { error: err instanceof Error ? err.message : String(err) },
+                    'Forceful shutdown after timeout',
+                );
+            }
+
+            // Now safe to close the tracking DB — no more requests in flight
             tracker?.close();
-            await app.close();
+
             logger.info('Pharos stopped.');
         },
         logger,

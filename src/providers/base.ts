@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResponse, ChatStreamChunk, ProviderHealth } from './types.js';
+import type { ChatRequest, ChatResponse, ChatStreamChunk, ProviderHealth, LatencyStats } from './types.js';
 import type { Logger } from '../utils/logger.js';
 
 /**
@@ -15,6 +15,9 @@ export abstract class LLMProvider {
     protected health: ProviderHealth;
     protected readonly timeoutMs: number;
     private readonly cooldownMs: number;
+    private readonly latencyWindow = 50;
+    private latencyHistory: number[] = [];
+    private baselineAvg: number | null = null;
 
     constructor(
         name: string,
@@ -72,6 +75,20 @@ export abstract class LLMProvider {
     }
 
     /**
+     * Undo the last recordError() call.
+     * Used when an error was not the provider's fault (e.g. context too large).
+     */
+    undoLastError(): void {
+        if (this.health.consecutiveErrors > 0) {
+            this.health.consecutiveErrors--;
+        }
+        // If we just restored from unavailable, re-enable
+        if (!this.health.available && this.health.consecutiveErrors < 3) {
+            this.health.available = true;
+        }
+    }
+
+    /**
      * Check if this provider is currently healthy.
      */
     isHealthy(): boolean {
@@ -94,5 +111,52 @@ export abstract class LLMProvider {
      */
     getHealth(): ProviderHealth {
         return { ...this.health };
+    }
+
+    /**
+     * Record a request's latency for rolling average tracking.
+     * Called from the gateway after a successful provider call.
+     */
+    recordLatency(ms: number): void {
+        this.latencyHistory.push(ms);
+        if (this.latencyHistory.length > this.latencyWindow) {
+            this.latencyHistory.shift();
+        }
+
+        // Establish baseline after first 10 samples, then check for degradation
+        const avg = this.latencyHistory.reduce((a, b) => a + b, 0) / this.latencyHistory.length;
+
+        if (this.latencyHistory.length >= 10 && this.baselineAvg === null) {
+            this.baselineAvg = avg;
+        }
+
+        if (this.baselineAvg !== null && avg > this.baselineAvg * 2) {
+            this.logger.warn(
+                { provider: this.name, avgMs: Math.round(avg), baselineMs: Math.round(this.baselineAvg) },
+                `Provider ${this.name}: latency degraded (${Math.round(avg)}ms avg vs ${Math.round(this.baselineAvg)}ms baseline)`,
+            );
+        }
+    }
+
+    /**
+     * Get rolling latency statistics.
+     */
+    getLatencyStats(): LatencyStats {
+        if (this.latencyHistory.length === 0) {
+            return { avgMs: 0, minMs: 0, maxMs: 0, p95Ms: 0, samples: 0, degraded: false };
+        }
+
+        const sorted = [...this.latencyHistory].sort((a, b) => a - b);
+        const avg = sorted.reduce((a, b) => a + b, 0) / sorted.length;
+        const p95Index = Math.floor(sorted.length * 0.95);
+
+        return {
+            avgMs: Math.round(avg),
+            minMs: sorted[0],
+            maxMs: sorted[sorted.length - 1],
+            p95Ms: sorted[p95Index],
+            samples: sorted.length,
+            degraded: this.baselineAvg !== null && avg > this.baselineAvg * 2,
+        };
     }
 }

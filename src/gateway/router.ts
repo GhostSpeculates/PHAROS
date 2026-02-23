@@ -3,15 +3,16 @@ import type { PharosConfig } from '../config/schema.js';
 import type { QueryClassifier } from '../classifier/index.js';
 import type { ModelRouter, RoutingDecision } from '../router/index.js';
 import type { ProviderRegistry } from '../providers/index.js';
-import type { ChatMessage } from '../providers/types.js';
+import type { ChatMessage, ChatResponse } from '../providers/types.js';
 import type { TrackingStore } from '../tracking/store.js';
 import type { Logger } from '../utils/logger.js';
 import { ChatCompletionRequestSchema } from './schemas/request.js';
 import { buildChatCompletionResponse, buildStreamChunk, buildErrorResponse } from './schemas/response.js';
 import { calculateCost, calculateBaselineCost } from '../tracking/cost-calculator.js';
 import { generateCompletionId, generateRequestId } from '../utils/id.js';
-import { initSSEHeaders, sendSSEChunk, sendSSEDone } from '../utils/stream.js';
+import { initSSEHeaders, sendSSEChunk, sendSSEDone, isClientConnected } from '../utils/stream.js';
 import { createAuthMiddleware } from './middleware/auth.js';
+import { estimateTokens, getContextWindow, isContextSizeError } from '../utils/context.js';
 
 /**
  * Register all API routes on the Fastify server.
@@ -37,7 +38,14 @@ export function registerRoutes(
             .map(([name, info]: [string, any]) => {
                 const icon = info.available && info.healthy ? '&#9679;' : '&#9675;';
                 const color = info.available && info.healthy ? '#22c55e' : '#6b7280';
-                return `<span style="color:${color}">${icon} ${name}</span>`;
+                const lat = info.latency;
+                const latencyText = lat.samples > 0
+                    ? `${lat.avgMs}ms avg`
+                    : 'no data';
+                const degradedTag = lat.degraded
+                    ? ' <span style="color:#ef4444;font-size:.7rem">&#9888; SLOW</span>'
+                    : '';
+                return `<span style="color:${color}">${icon} ${name} <span style="color:#737373;font-size:.75rem">(${latencyText}${degradedTag})</span></span>`;
             })
             .join('&nbsp;&nbsp;');
 
@@ -54,6 +62,32 @@ export function registerRoutes(
                 .join('')
             : '<tr><td colspan="3">No requests yet</td></tr>';
 
+        const recent = tracker?.getRecent(25) ?? [];
+        const tierColors: Record<string, string> = {
+            free: '#22c55e', economical: '#3b82f6', premium: '#a855f7', frontier: '#f59e0b',
+        };
+        const recentRows = recent.length > 0
+            ? recent.map((r) => {
+                const time = new Date(r.timestamp).toLocaleTimeString('en-US', { hour12: false });
+                const tierColor = tierColors[r.tier] ?? '#737373';
+                const preview = r.preview
+                    ? r.preview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    : '<span style="color:#525252">—</span>';
+                return `<tr>
+<td style="white-space:nowrap">${time}</td>
+<td class="preview-cell" title="${r.preview ?? ''}">${preview}</td>
+<td>${r.score}</td>
+<td>${r.type}</td>
+<td><span style="color:${tierColor}">${r.tier}</span></td>
+<td>${r.provider}</td>
+<td style="font-size:.75rem">${r.model}</td>
+<td>${r.tokens.toLocaleString()}</td>
+<td>$${r.cost.toFixed(6)}</td>
+<td>${r.latencyMs.toLocaleString()}ms</td>
+</tr>`;
+            }).join('')
+            : '<tr><td colspan="10" style="text-align:center;color:#525252">No requests yet</td></tr>';
+
         const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -62,25 +96,30 @@ export function registerRoutes(
 <title>Pharos Gateway</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0a;color:#e5e5e5;min-height:100vh;display:flex;align-items:center;justify-content:center}
-.container{max-width:640px;width:100%;padding:2rem}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0a;color:#e5e5e5;min-height:100vh;padding:2rem 1rem}
+.container{max-width:1100px;width:100%;margin:0 auto}
 h1{font-size:2rem;font-weight:700;margin-bottom:.25rem}
 h1 span{color:#facc15}
 .subtitle{color:#a3a3a3;margin-bottom:2rem;font-size:.9rem}
+.top-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
 .card{background:#171717;border:1px solid #262626;border-radius:12px;padding:1.5rem;margin-bottom:1rem}
 .card h2{font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:#a3a3a3;margin-bottom:1rem}
+.card h2 .refresh{float:right;font-size:.7rem;color:#525252;text-transform:none;letter-spacing:0}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;text-align:center}
 .stat-value{font-size:1.5rem;font-weight:700;color:#fff}
 .stat-label{font-size:.75rem;color:#737373;margin-top:.15rem}
 .savings .stat-value{color:#22c55e}
 .providers{display:flex;gap:.75rem;flex-wrap:wrap;font-size:.9rem}
-table{width:100%;border-collapse:collapse;font-size:.85rem}
-th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid #262626}
-th{color:#a3a3a3;font-weight:500}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid #262626}
+th{color:#a3a3a3;font-weight:500;white-space:nowrap}
+.preview-cell{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d4d4d4}
+.recent-table{overflow-x:auto}
 .endpoints{font-size:.8rem;color:#737373;line-height:1.8}
 .endpoints code{background:#262626;padding:.15rem .4rem;border-radius:4px;color:#d4d4d4;font-size:.75rem}
 a{color:#facc15;text-decoration:none}
 a:hover{text-decoration:underline}
+@media(max-width:768px){.top-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -88,6 +127,8 @@ a:hover{text-decoration:underline}
 <h1><span>&#9889;</span> Pharos</h1>
 <p class="subtitle">Intelligent LLM Routing Gateway &mdash; v0.1.0</p>
 
+<div class="top-grid">
+<div>
 <div class="card">
 <h2>Providers</h2>
 <div class="providers">${providers}</div>
@@ -101,10 +142,26 @@ a:hover{text-decoration:underline}
 <div class="savings"><div class="stat-value">${savingsPct.toFixed(1)}%</div><div class="stat-label">Savings</div></div>
 </div>
 </div>
+</div>
 
+<div>
 <div class="card">
 <h2>By Tier</h2>
 <table><tr><th>Tier</th><th>Requests</th><th>Cost</th></tr>${tierRows}</table>
+</div>
+
+<div class="card">
+<h2>Provider Latency</h2>
+<table><tr><th>Provider</th><th>Avg</th><th>P95</th><th>Samples</th><th>Status</th></tr>
+${Object.entries(status).map(([name, info]: [string, any]) => {
+    const lat = info.latency;
+    if (!info.available) return `<tr><td>${name}</td><td colspan="4" style="color:#525252">unavailable</td></tr>`;
+    if (lat.samples === 0) return `<tr><td>${name}</td><td colspan="4" style="color:#525252">no data yet</td></tr>`;
+    const statusColor = lat.degraded ? '#ef4444' : '#22c55e';
+    const statusText = lat.degraded ? 'degraded' : 'healthy';
+    return `<tr><td>${name}</td><td>${lat.avgMs}ms</td><td>${lat.p95Ms}ms</td><td>${lat.samples}</td><td style="color:${statusColor}">${statusText}</td></tr>`;
+}).join('')}
+</table>
 </div>
 
 <div class="card">
@@ -113,11 +170,30 @@ a:hover{text-decoration:underline}
 <code>POST</code> <a href="/v1/chat/completions">/v1/chat/completions</a> &mdash; Routing endpoint<br/>
 <code>GET</code> <a href="/v1/models">/v1/models</a> &mdash; List models<br/>
 <code>GET</code> <a href="/v1/stats">/v1/stats</a> &mdash; Cost &amp; savings JSON<br/>
+<code>GET</code> <a href="/v1/stats/recent">/v1/stats/recent</a> &mdash; Recent requests JSON<br/>
 <code>GET</code> <a href="/health">/health</a> &mdash; Health check
+</div>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h2>Recent Requests <span class="refresh" id="countdown">refreshing in 30s</span></h2>
+<div class="recent-table">
+<table>
+<tr><th>Time</th><th>Message</th><th>Score</th><th>Type</th><th>Tier</th><th>Provider</th><th>Model</th><th>Tokens</th><th>Cost</th><th>Latency</th></tr>
+${recentRows}
+</table>
 </div>
 </div>
 
 </div>
+<script>
+(function(){
+  var s=30,el=document.getElementById('countdown');
+  setInterval(function(){s--;if(s<=0){location.reload()}else{el.textContent='refreshing in '+s+'s'}},1000);
+})();
+</script>
 </body>
 </html>`;
 
@@ -223,12 +299,7 @@ a:hover{text-decoration:underline}
                 '→ Routed',
             );
 
-            // 4. Get the provider and execute
-            const provider = registry.get(routing.provider);
-            if (!provider) {
-                throw new Error(`Provider ${routing.provider} not found in registry`);
-            }
-
+            // 4. Build request template and candidate list for retry
             const chatRequest = {
                 model: routing.model,
                 messages,
@@ -239,117 +310,290 @@ a:hover{text-decoration:underline}
                 stop: body.stop ? (Array.isArray(body.stop) ? body.stop : [body.stop]) : undefined,
                 ...(body.presence_penalty !== undefined && { presencePenalty: body.presence_penalty }),
                 ...(body.frequency_penalty !== undefined && { frequencyPenalty: body.frequency_penalty }),
+                ...(body.thinking !== undefined && { thinking: body.thinking }),
             };
 
-            // ─── Streaming response ───
-            if (body.stream) {
-                // Set Pharos metadata headers BEFORE initSSEHeaders writes them out
-                reply.raw.setHeader('X-Pharos-Tier', routing.tier);
-                reply.raw.setHeader('X-Pharos-Model', routing.model);
-                reply.raw.setHeader('X-Pharos-Provider', routing.provider);
-                reply.raw.setHeader('X-Pharos-Score', String(classification.score));
-                reply.raw.setHeader('X-Pharos-Request-Id', requestId);
+            // Extract truncated last user message for audit logging
+            const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+            const msgPreview = lastUserMsg
+                ? (typeof lastUserMsg.content === 'string'
+                    ? lastUserMsg.content
+                    : Array.isArray(lastUserMsg.content)
+                        ? lastUserMsg.content.filter((p: any) => p.type === 'text').map((p: any) => p.text).join(' ')
+                        : String(lastUserMsg.content ?? ''))
+                : '';
+            const userMessagePreview = msgPreview.slice(0, 80);
 
-                initSSEHeaders(reply);
+            // Build candidate list: direct routes get a single candidate, auto routes get full retry chain
+            const candidates = directModel
+                ? [{ provider: routing.provider, model: routing.model, tier: routing.tier }]
+                : router.getCandidates(classification);
 
-                let totalContent = '';
-                let finalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+            if (candidates.length === 0) {
+                throw new Error('No available providers found');
+            }
 
-                try {
-                    for await (const chunk of provider.chatStream(chatRequest)) {
-                        if (chunk.content) {
-                            totalContent += chunk.content;
-                            sendSSEChunk(reply, buildStreamChunk({
-                                id: completionId,
-                                model: routing.model,
-                                content: chunk.content,
-                            }));
-                        }
+            // Pre-flight: estimate token count and filter out providers with insufficient context windows
+            const estimatedTokens = estimateTokens(messages);
+            let filteredCandidates = candidates;
 
-                        if (chunk.finishReason) {
-                            if (chunk.usage) finalUsage = chunk.usage;
-                            sendSSEChunk(reply, buildStreamChunk({
-                                id: completionId,
-                                model: routing.model,
-                                content: '',
-                                finishReason: chunk.finishReason,
-                            }));
-                        }
-                    }
-                } catch (streamError) {
-                    const errMsg = streamError instanceof Error ? streamError.message : 'Unknown stream error';
-                    logger.error({ requestId, error: errMsg }, 'Stream error during response');
+            if (estimatedTokens > 100_000) {
+                filteredCandidates = candidates.filter(c => getContextWindow(c.model) > estimatedTokens);
+                const skipped = candidates.length - filteredCandidates.length;
 
-                    // Send an SSE error event so the client knows something went wrong
-                    sendSSEChunk(reply, {
-                        error: {
-                            message: `Stream interrupted: ${errMsg}`,
-                            type: 'server_error',
-                            code: 'stream_error',
-                        },
-                    });
-                    sendSSEDone(reply);
-                    return;
-                }
-
-                sendSSEDone(reply);
-
-                // Track the request
-                trackRequest(
-                    tracker, config, requestId, routing, classification, finalUsage,
-                    Date.now() - requestStartTime, true,
-                );
-
-                const cost = calculateCost(routing.provider, routing.model, finalUsage.promptTokens, finalUsage.completionTokens);
-                logger.info(
+                logger.warn(
                     {
                         requestId,
-                        tier: routing.tier,
-                        model: routing.model,
-                        tokens: finalUsage.totalTokens,
-                        cost: `$${cost.toFixed(6)}`,
-                        latencyMs: Date.now() - requestStartTime,
+                        estimatedTokens,
+                        totalCandidates: candidates.length,
+                        eligibleCandidates: filteredCandidates.length,
+                        skippedModels: candidates
+                            .filter(c => getContextWindow(c.model) <= estimatedTokens)
+                            .map(c => `${c.provider}/${c.model} (${Math.round(getContextWindow(c.model) / 1000)}K)`)
+                            .join(', '),
                     },
-                    '✓ Completed (stream)',
+                    `⚠ Oversized request (~${Math.round(estimatedTokens / 1000)}K tokens), skipped ${skipped} providers with insufficient context`,
                 );
 
+                // If no candidates can handle it, fall back to full list as a last resort
+                if (filteredCandidates.length === 0) {
+                    logger.warn({ requestId }, 'No providers with sufficient context window — trying all as fallback');
+                    filteredCandidates = candidates;
+                }
+            }
+
+            let retryCount = 0;
+
+            // ─── Streaming response with retry ───
+            if (body.stream) {
+                let succeeded = false;
+
+                // Listen for client disconnect so we can abort early
+                let clientDisconnected = false;
+                reply.raw.on('close', () => { clientDisconnected = true; });
+
+                for (const candidate of filteredCandidates) {
+                    const p = registry.get(candidate.provider);
+                    if (!p) continue;
+
+                    // If client already gone, no point trying more providers
+                    if (clientDisconnected) {
+                        logger.info({ requestId }, 'Client disconnected before stream started, aborting');
+                        return;
+                    }
+
+                    try {
+                        const streamReq = { ...chatRequest, model: candidate.model };
+                        let headersSent = false;
+                        let finalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
+                        for await (const chunk of p.chatStream(streamReq)) {
+                            // Client disconnected mid-stream — stop reading from provider
+                            if (clientDisconnected || !isClientConnected(reply)) {
+                                logger.info({ requestId, provider: candidate.provider, model: candidate.model }, 'Client disconnected mid-stream, aborting');
+                                // Still track what we served
+                                const finalRouting = { ...routing, provider: candidate.provider, model: candidate.model, tier: candidate.tier };
+                                trackRequest(
+                                    tracker, config, requestId, finalRouting, classification, finalUsage,
+                                    Date.now() - requestStartTime, true, userMessagePreview,
+                                );
+                                return;
+                            }
+
+                            // Commit on first successful data — send SSE headers
+                            if (!headersSent) {
+                                reply.raw.setHeader('X-Pharos-Tier', candidate.tier);
+                                reply.raw.setHeader('X-Pharos-Model', candidate.model);
+                                reply.raw.setHeader('X-Pharos-Provider', candidate.provider);
+                                reply.raw.setHeader('X-Pharos-Score', String(classification.score));
+                                reply.raw.setHeader('X-Pharos-Request-Id', requestId);
+                                if (retryCount > 0) {
+                                    reply.raw.setHeader('X-Pharos-Retries', String(retryCount));
+                                }
+                                initSSEHeaders(reply);
+                                headersSent = true;
+                            }
+
+                            if (chunk.content) {
+                                if (!sendSSEChunk(reply, buildStreamChunk({
+                                    id: completionId,
+                                    model: candidate.model,
+                                    content: chunk.content,
+                                }))) {
+                                    logger.info({ requestId }, 'Client disconnected (write failed), aborting stream');
+                                    return;
+                                }
+                            }
+
+                            if (chunk.finishReason) {
+                                if (chunk.usage) finalUsage = chunk.usage;
+                                sendSSEChunk(reply, buildStreamChunk({
+                                    id: completionId,
+                                    model: candidate.model,
+                                    content: '',
+                                    finishReason: chunk.finishReason,
+                                }));
+                            }
+                        }
+
+                        sendSSEDone(reply);
+
+                        // Record per-provider latency
+                        const providerLatency = Date.now() - requestStartTime - (classification.latencyMs ?? 0);
+                        p.recordLatency(Math.max(0, providerLatency));
+
+                        // Track with the actual model that succeeded
+                        const finalRouting = { ...routing, provider: candidate.provider, model: candidate.model, tier: candidate.tier };
+                        trackRequest(
+                            tracker, config, requestId, finalRouting, classification, finalUsage,
+                            Date.now() - requestStartTime, true, userMessagePreview,
+                        );
+
+                        const cost = calculateCost(candidate.provider, candidate.model, finalUsage.promptTokens, finalUsage.completionTokens);
+                        logger.info(
+                            {
+                                requestId,
+                                tier: candidate.tier,
+                                model: candidate.model,
+                                tokens: finalUsage.totalTokens,
+                                cost: `$${cost.toFixed(6)}`,
+                                latencyMs: Date.now() - requestStartTime,
+                                preview: userMessagePreview,
+                                retries: retryCount,
+                            },
+                            '✓ Completed (stream)',
+                        );
+
+                        succeeded = true;
+                        break;
+                    } catch (streamError) {
+                        // If headers already sent, we can't retry — fail gracefully
+                        if (reply.raw.headersSent) {
+                            const errMsg = streamError instanceof Error ? streamError.message : 'Unknown stream error';
+
+                            // If client already gone, just log and bail
+                            if (clientDisconnected || !isClientConnected(reply)) {
+                                logger.warn({ requestId, error: errMsg }, 'Stream error after client disconnect, dropping');
+                                return;
+                            }
+
+                            logger.error({ requestId, error: errMsg }, 'Stream error mid-response (cannot retry)');
+                            sendSSEChunk(reply, {
+                                error: {
+                                    message: `Stream interrupted: ${errMsg}`,
+                                    type: 'server_error',
+                                    code: 'stream_error',
+                                },
+                            });
+                            sendSSEDone(reply);
+                            return;
+                        }
+
+                        // Headers not sent yet — retry with next candidate
+                        retryCount++;
+                        const errMsg = streamError instanceof Error ? streamError.message : 'unknown';
+
+                        // Don't damage provider health for context-size errors
+                        if (isContextSizeError(errMsg)) {
+                            p.undoLastError();
+                            logger.warn(
+                                { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount },
+                                '⟳ Context too large for model, trying next (health preserved)',
+                            );
+                        } else {
+                            logger.warn(
+                                { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount, error: errMsg },
+                                '⟳ Stream failed before data, trying next model',
+                            );
+                        }
+                    }
+                }
+
+                if (!succeeded) {
+                    throw new Error(`All providers failed after ${retryCount} retry attempts`);
+                }
                 return;
             }
 
-            // ─── Non-streaming response ───
-            const response = await provider.chat(chatRequest);
+            // ─── Non-streaming response with retry ───
+            let response: ChatResponse | null = null;
+            let usedProvider = routing.provider;
+            let usedModel = routing.model;
+            let usedTier = routing.tier;
 
-            const cost = calculateCost(routing.provider, routing.model, response.usage.promptTokens, response.usage.completionTokens);
+            for (const candidate of filteredCandidates) {
+                const p = registry.get(candidate.provider);
+                if (!p) continue;
 
-            // Track the request
+                try {
+                    const callStart = Date.now();
+                    response = await p.chat({ ...chatRequest, model: candidate.model });
+                    p.recordLatency(Date.now() - callStart);
+                    usedProvider = candidate.provider;
+                    usedModel = candidate.model;
+                    usedTier = candidate.tier;
+                    break;
+                } catch (err) {
+                    retryCount++;
+                    const errMsg = err instanceof Error ? err.message : 'unknown';
+
+                    // Don't damage provider health for context-size errors
+                    if (isContextSizeError(errMsg)) {
+                        p.undoLastError();
+                        logger.warn(
+                            { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount },
+                            '⟳ Context too large for model, trying next (health preserved)',
+                        );
+                    } else {
+                        logger.warn(
+                            { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount, error: errMsg },
+                            '⟳ Provider error, trying next model',
+                        );
+                    }
+                }
+            }
+
+            if (!response) {
+                throw new Error(`All providers failed after ${retryCount} retry attempts`);
+            }
+
+            const cost = calculateCost(usedProvider, usedModel, response.usage.promptTokens, response.usage.completionTokens);
+
+            // Track with the actual model that succeeded
+            const finalRouting = { ...routing, provider: usedProvider, model: usedModel, tier: usedTier };
             trackRequest(
-                tracker, config, requestId, routing, classification, response.usage,
-                Date.now() - requestStartTime, false,
+                tracker, config, requestId, finalRouting, classification, response.usage,
+                Date.now() - requestStartTime, false, userMessagePreview,
             );
 
             logger.info(
                 {
                     requestId,
-                    tier: routing.tier,
-                    model: routing.model,
+                    tier: usedTier,
+                    model: usedModel,
                     tokens: response.usage.totalTokens,
                     cost: `$${cost.toFixed(6)}`,
                     latencyMs: Date.now() - requestStartTime,
+                    preview: userMessagePreview,
+                    retries: retryCount,
                 },
                 '✓ Completed',
             );
 
             // Set Pharos metadata headers
-            reply.header('X-Pharos-Tier', routing.tier);
-            reply.header('X-Pharos-Model', routing.model);
-            reply.header('X-Pharos-Provider', routing.provider);
+            reply.header('X-Pharos-Tier', usedTier);
+            reply.header('X-Pharos-Model', usedModel);
+            reply.header('X-Pharos-Provider', usedProvider);
             reply.header('X-Pharos-Score', String(classification.score));
             reply.header('X-Pharos-Cost', cost.toFixed(6));
             reply.header('X-Pharos-Request-Id', requestId);
+            if (retryCount > 0) {
+                reply.header('X-Pharos-Retries', String(retryCount));
+            }
 
             return buildChatCompletionResponse({
                 id: completionId,
-                model: routing.model,
+                model: usedModel,
                 content: response.content,
                 finishReason: response.finishReason,
                 usage: response.usage,
@@ -360,14 +604,17 @@ a:hover{text-decoration:underline}
 
             // If reply was already hijacked (streaming started), write error to raw stream
             if (reply.raw.headersSent) {
-                sendSSEChunk(reply, {
-                    error: {
-                        message: `Routing failed: ${errMsg}`,
-                        type: 'server_error',
-                        code: 'provider_error',
-                    },
-                });
-                sendSSEDone(reply);
+                // Only attempt to write if client is still connected
+                if (isClientConnected(reply)) {
+                    sendSSEChunk(reply, {
+                        error: {
+                            message: `Routing failed: ${errMsg}`,
+                            type: 'server_error',
+                            code: 'provider_error',
+                        },
+                    });
+                    sendSSEDone(reply);
+                }
             } else {
                 reply.status(502).send(
                     buildErrorResponse(
@@ -387,6 +634,14 @@ a:hover{text-decoration:underline}
         }
         return tracker.getSummary();
     });
+
+    // ─── Recent Requests endpoint ───
+    app.get('/v1/stats/recent', { preHandler: authMiddleware }, async () => {
+        if (!tracker) {
+            return { error: 'Tracking is disabled' };
+        }
+        return { requests: tracker.getRecent(25) };
+    });
 }
 
 /**
@@ -401,6 +656,7 @@ function trackRequest(
     usage: { promptTokens: number; completionTokens: number; totalTokens: number },
     totalLatencyMs: number,
     stream: boolean,
+    userMessagePreview: string,
 ): void {
     if (!tracker) return;
 
@@ -429,5 +685,6 @@ function trackRequest(
         totalLatencyMs,
         stream,
         isDirectRoute: routing.isDirectRoute,
+        userMessagePreview,
     });
 }

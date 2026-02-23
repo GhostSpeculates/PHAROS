@@ -81,14 +81,16 @@ export class ProviderRegistry {
     }
 
     /**
-     * Get a summary of all provider statuses.
+     * Get a summary of all provider statuses including latency.
      */
-    getStatus(): Record<string, { available: boolean; healthy: boolean }> {
-        const status: Record<string, { available: boolean; healthy: boolean }> = {};
+    getStatus(): Record<string, { available: boolean; healthy: boolean; latency: { avgMs: number; p95Ms: number; samples: number; degraded: boolean } }> {
+        const status: Record<string, { available: boolean; healthy: boolean; latency: { avgMs: number; p95Ms: number; samples: number; degraded: boolean } }> = {};
         for (const [name, provider] of this.providers) {
+            const lat = provider.getLatencyStats();
             status[name] = {
                 available: provider.available,
                 healthy: provider.isHealthy(),
+                latency: { avgMs: lat.avgMs, p95Ms: lat.p95Ms, samples: lat.samples, degraded: lat.degraded },
             };
         }
         return status;

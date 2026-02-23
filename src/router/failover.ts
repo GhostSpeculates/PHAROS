@@ -11,6 +11,12 @@ export interface FailoverResult {
     failedProviders: string[];
 }
 
+export interface ModelCandidate {
+    provider: string;
+    model: string;
+    tier: TierName;
+}
+
 /**
  * Attempt to find an available model, trying failover options.
  *
@@ -60,4 +66,34 @@ export function findAvailableModel(
         `No available providers found after trying ${attempts} models across all tiers. ` +
         `Failed: ${failedProviders.join(', ')}`,
     );
+}
+
+/**
+ * Get all candidate models in failover order for runtime retry.
+ *
+ * Unlike findAvailableModel which returns the first healthy model,
+ * this returns ALL healthy models so the gateway can retry on execution failure.
+ */
+export function getCandidateModels(
+    primaryTier: TierName,
+    config: PharosConfig,
+    registry: ProviderRegistry,
+): ModelCandidate[] {
+    const tierOrder = getTierFailoverOrder(primaryTier);
+    const candidates: ModelCandidate[] = [];
+
+    for (const tierName of tierOrder) {
+        const tier = config.tiers[tierName];
+        for (const modelEntry of tier.models) {
+            if (registry.isAvailable(modelEntry.provider)) {
+                candidates.push({
+                    provider: modelEntry.provider,
+                    model: modelEntry.model,
+                    tier: tierName,
+                });
+            }
+        }
+    }
+
+    return candidates;
 }

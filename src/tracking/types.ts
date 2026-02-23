@@ -19,6 +19,7 @@ export interface RequestRecord {
     totalLatencyMs: number;
     stream: boolean;
     isDirectRoute: boolean;
+    userMessagePreview?: string;
 }
 
 export interface CostSummary {

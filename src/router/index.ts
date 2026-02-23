@@ -3,7 +3,7 @@ import type { ClassificationResult } from '../classifier/types.js';
 import type { ProviderRegistry } from '../providers/index.js';
 import type { Logger } from '../utils/logger.js';
 import { resolveTier } from './tier-resolver.js';
-import { findAvailableModel, type FailoverResult } from './failover.js';
+import { findAvailableModel, getCandidateModels, type FailoverResult, type ModelCandidate } from './failover.js';
 
 export interface RoutingDecision {
     /** Which provider to use */
@@ -94,6 +94,15 @@ export class ModelRouter {
             failoverAttempts: 0,
             isDirectRoute: true,
         };
+    }
+
+    /**
+     * Get all candidate models in retry order for a classification.
+     * Used by the gateway to retry execution across models on failure.
+     */
+    getCandidates(classification: ClassificationResult): ModelCandidate[] {
+        const tier = resolveTier(classification.score, this.config);
+        return getCandidateModels(tier, this.config, this.registry);
     }
 
     /**

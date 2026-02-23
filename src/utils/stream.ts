@@ -1,18 +1,39 @@
 import type { FastifyReply } from 'fastify';
 
 /**
- * Send a single SSE chunk to the client.
+ * Check whether the client connection is still alive.
  */
-export function sendSSEChunk(reply: FastifyReply, data: object): void {
-    reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+export function isClientConnected(reply: FastifyReply): boolean {
+    return !reply.raw.destroyed && !reply.raw.writableEnded;
+}
+
+/**
+ * Send a single SSE chunk to the client.
+ * Returns false if the write failed (client disconnected).
+ */
+export function sendSSEChunk(reply: FastifyReply, data: object): boolean {
+    if (!isClientConnected(reply)) return false;
+    try {
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 /**
  * Send the final [DONE] marker and end the stream.
+ * Returns false if the write failed (client disconnected).
  */
-export function sendSSEDone(reply: FastifyReply): void {
-    reply.raw.write('data: [DONE]\n\n');
-    reply.raw.end();
+export function sendSSEDone(reply: FastifyReply): boolean {
+    if (!isClientConnected(reply)) return false;
+    try {
+        reply.raw.write('data: [DONE]\n\n');
+        reply.raw.end();
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 /**
