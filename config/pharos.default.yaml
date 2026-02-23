@@ -5,7 +5,7 @@
 
 server:
   port: 3777
-  host: "0.0.0.0"
+  host: "127.0.0.1"
 
 # Your Pharos API key — clients must send this to authenticate
 # Can also be set via PHAROS_API_KEY env var
@@ -18,7 +18,7 @@ classifier:
   provider: groq
   model: llama-3.3-70b-versatile
   # Fallback tier if classifier fails (free | economical | premium | frontier)
-  fallbackTier: economical
+  fallbackTier: premium
   # Max time to wait for classification (ms)
   timeoutMs: 5000
 
@@ -56,13 +56,11 @@ tiers:
     scoreRange: [9, 10]
     models:
       - provider: anthropic
+        model: claude-opus-4-20250514
+      - provider: anthropic
         model: claude-sonnet-4-20250514
       - provider: openai
         model: gpt-4o
-      # Opus disabled for now — too slow on 30s timeout, expensive
-      # Re-enable when needed for truly frontier tasks
-      # - provider: anthropic
-      #   model: claude-opus-4-20250514
 
 # Provider configurations — API keys loaded from env vars
 providers:

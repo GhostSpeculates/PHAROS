@@ -33,6 +33,12 @@ export const ChatCompletionRequestSchema = z.object({
     presence_penalty: z.number().optional(),
     frequency_penalty: z.number().optional(),
     user: z.string().optional(),
+    // Anthropic extended thinking — passed through to Anthropic, ignored for other providers
+    thinking: z.union([
+        z.object({ type: z.literal('enabled'), budget_tokens: z.number().int().positive() }),
+        z.object({ type: z.literal('disabled') }),
+        z.string(),
+    ]).optional(),
 });
 
 export type ChatCompletionRequest = z.infer<typeof ChatCompletionRequestSchema>;

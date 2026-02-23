@@ -18,7 +18,18 @@ export interface ChatRequest {
     stream?: boolean;
     topP?: number;
     stop?: string[];
+    /** Anthropic extended thinking config — passed through when routing to Anthropic, ignored for other providers. */
+    thinking?: ThinkingConfig;
 }
+
+/**
+ * Extended thinking configuration.
+ * Supports both the full Anthropic format and shorthand strings (e.g. "low", "medium", "high").
+ */
+export type ThinkingConfig =
+    | { type: 'enabled'; budget_tokens: number }
+    | { type: 'disabled' }
+    | string;
 
 export interface ChatResponse {
     content: string;
@@ -45,4 +56,13 @@ export interface ProviderHealth {
     lastError?: string;
     lastErrorTime?: number;
     consecutiveErrors: number;
+}
+
+export interface LatencyStats {
+    avgMs: number;
+    minMs: number;
+    maxMs: number;
+    p95Ms: number;
+    samples: number;
+    degraded: boolean;
 }

@@ -1,7 +1,41 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { LLMProvider } from './base.js';
-import type { ChatRequest, ChatResponse, ChatStreamChunk } from './types.js';
+import type { ChatRequest, ChatResponse, ChatStreamChunk, ThinkingConfig } from './types.js';
 import type { Logger } from '../utils/logger.js';
+
+/** Budget token presets for shorthand thinking values. */
+const THINKING_BUDGETS: Record<string, number> = {
+    low: 2048,
+    medium: 8192,
+    high: 32768,
+};
+
+/**
+ * Resolve a ThinkingConfig into the Anthropic SDK format, or undefined if disabled/absent.
+ */
+function resolveThinking(
+    cfg: ThinkingConfig | undefined,
+): { type: 'enabled'; budget_tokens: number } | undefined {
+    if (cfg === undefined) return undefined;
+
+    // String shorthand: "low", "medium", "high", "disabled", or a numeric string
+    if (typeof cfg === 'string') {
+        if (cfg === 'disabled' || cfg === 'off' || cfg === 'none') return undefined;
+        const preset = THINKING_BUDGETS[cfg];
+        if (preset) return { type: 'enabled', budget_tokens: preset };
+        // Try parsing as a number
+        const num = parseInt(cfg, 10);
+        if (!isNaN(num) && num >= 1024) return { type: 'enabled', budget_tokens: num };
+        // Unknown string — treat as low
+        return { type: 'enabled', budget_tokens: THINKING_BUDGETS.low };
+    }
+
+    // Object format
+    if (cfg.type === 'disabled') return undefined;
+    if (cfg.type === 'enabled') return { type: 'enabled', budget_tokens: cfg.budget_tokens };
+
+    return undefined;
+}
 
 /**
  * Anthropic provider adapter (Claude models).
@@ -10,6 +44,7 @@ import type { Logger } from '../utils/logger.js';
  * - Anthropic uses a separate `system` param instead of a system message
  * - Different streaming format
  * - Different response structure
+ * - Extended thinking support
  */
 export class AnthropicProvider extends LLMProvider {
     private client: Anthropic | null = null;
@@ -34,6 +69,10 @@ export class AnthropicProvider extends LLMProvider {
 
         try {
             const { system, messages } = this.convertMessages(request.messages);
+            const thinking = resolveThinking(request.thinking);
+
+            // When thinking is enabled, Anthropic requires temperature to be unset (defaults to 1)
+            const temperature = thinking ? undefined : request.temperature;
 
             const response = await this.client.messages.create(
                 {
@@ -41,15 +80,17 @@ export class AnthropicProvider extends LLMProvider {
                     max_tokens: request.maxTokens ?? 4096,
                     ...(system ? { system } : {}),
                     messages,
-                    ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+                    ...(temperature !== undefined ? { temperature } : {}),
                     ...(request.topP !== undefined ? { top_p: request.topP } : {}),
                     ...(request.stop ? { stop_sequences: request.stop } : {}),
+                    ...(thinking ? { thinking } : {}),
                 },
                 { signal: abort.signal },
             );
 
             this.recordSuccess();
 
+            // Extract text content (skip thinking blocks — those are internal reasoning)
             const textContent = response.content
                 .filter((block): block is Anthropic.TextBlock => block.type === 'text')
                 .map((block) => block.text)
@@ -87,6 +128,10 @@ export class AnthropicProvider extends LLMProvider {
 
         try {
             const { system, messages } = this.convertMessages(request.messages);
+            const thinking = resolveThinking(request.thinking);
+
+            // When thinking is enabled, Anthropic requires temperature to be unset
+            const temperature = thinking ? undefined : request.temperature;
 
             const stream = this.client.messages.stream(
                 {
@@ -94,14 +139,16 @@ export class AnthropicProvider extends LLMProvider {
                     max_tokens: request.maxTokens ?? 4096,
                     ...(system ? { system } : {}),
                     messages,
-                    ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+                    ...(temperature !== undefined ? { temperature } : {}),
                     ...(request.topP !== undefined ? { top_p: request.topP } : {}),
                     ...(request.stop ? { stop_sequences: request.stop } : {}),
+                    ...(thinking ? { thinking } : {}),
                 },
                 { signal: abort.signal },
             );
 
             for await (const event of stream) {
+                // Only forward text deltas — skip thinking deltas (internal reasoning)
                 if (
                     event.type === 'content_block_delta' &&
                     event.delta.type === 'text_delta'

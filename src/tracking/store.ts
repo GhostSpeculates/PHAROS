@@ -46,7 +46,8 @@ export class TrackingStore {
         savings REAL NOT NULL DEFAULT 0,
         total_latency_ms INTEGER NOT NULL DEFAULT 0,
         stream INTEGER NOT NULL DEFAULT 0,
-        is_direct_route INTEGER NOT NULL DEFAULT 0
+        is_direct_route INTEGER NOT NULL DEFAULT 0,
+        user_message_preview TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp);
@@ -54,32 +55,61 @@ export class TrackingStore {
       CREATE INDEX IF NOT EXISTS idx_requests_provider ON requests(provider);
     `);
 
+        // Migrate existing databases: add columns that may not exist yet
+        const columns = this.db.prepare("PRAGMA table_info(requests)").all() as Array<{ name: string }>;
+        const columnNames = new Set(columns.map(c => c.name));
+
+        if (!columnNames.has('user_message_preview')) {
+            this.db.exec('ALTER TABLE requests ADD COLUMN user_message_preview TEXT');
+        }
+
         this.insertStmt = this.db.prepare(`
       INSERT INTO requests (
         id, timestamp, tier, provider, model,
         classification_score, classification_type, classification_latency_ms,
         tokens_in, tokens_out, estimated_cost, baseline_cost, savings,
-        total_latency_ms, stream, is_direct_route
+        total_latency_ms, stream, is_direct_route, user_message_preview
       ) VALUES (
         @id, @timestamp, @tier, @provider, @model,
         @classificationScore, @classificationType, @classificationLatencyMs,
         @tokensIn, @tokensOut, @estimatedCost, @baselineCost, @savings,
-        @totalLatencyMs, @stream, @isDirectRoute
+        @totalLatencyMs, @stream, @isDirectRoute, @userMessagePreview
       )
     `);
 
+        // Clean up entries older than 30 days on startup
+        this.purgeOldRecords(30);
+
         this.logger.debug({ dbPath }, 'Tracking store initialized');
+    }
+
+    /**
+     * Delete tracking records older than the given number of days.
+     * Runs once at startup to keep the database lean.
+     */
+    private purgeOldRecords(days: number): void {
+        try {
+            const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+            const result = this.db.prepare('DELETE FROM requests WHERE timestamp < ?').run(cutoff);
+            if (result.changes > 0) {
+                this.logger.info({ deleted: result.changes, olderThan: `${days} days` }, 'Purged old tracking records');
+            }
+        } catch (error) {
+            this.logger.error({ error }, 'Failed to purge old tracking records');
+        }
     }
 
     /**
      * Record a completed request.
      */
     record(record: RequestRecord): void {
+        if (this.closed) return;
         try {
             this.insertStmt.run({
                 ...record,
                 stream: record.stream ? 1 : 0,
                 isDirectRoute: record.isDirectRoute ? 1 : 0,
+                userMessagePreview: record.userMessagePreview ?? null,
             });
         } catch (error) {
             this.logger.error({ error }, 'Failed to record request');
@@ -134,6 +164,49 @@ export class TrackingStore {
                 byProvider.map((r) => [r.provider, { count: r.count, cost: r.cost }]),
             ),
         };
+    }
+
+    /**
+     * Get the most recent N requests.
+     */
+    getRecent(limit: number = 25): Array<{
+        timestamp: string;
+        preview: string | null;
+        score: number;
+        type: string;
+        tier: string;
+        provider: string;
+        model: string;
+        tokens: number;
+        cost: number;
+        latencyMs: number;
+        stream: boolean;
+    }> {
+        const rows = this.db
+            .prepare(
+                `SELECT
+                    timestamp, user_message_preview, classification_score, classification_type,
+                    tier, provider, model, tokens_in + tokens_out as tokens,
+                    estimated_cost, total_latency_ms, stream
+                FROM requests
+                ORDER BY timestamp DESC
+                LIMIT ?`,
+            )
+            .all(limit) as Array<Record<string, any>>;
+
+        return rows.map((r) => ({
+            timestamp: r.timestamp,
+            preview: r.user_message_preview ?? null,
+            score: r.classification_score,
+            type: r.classification_type,
+            tier: r.tier,
+            provider: r.provider,
+            model: r.model,
+            tokens: r.tokens,
+            cost: r.estimated_cost,
+            latencyMs: r.total_latency_ms,
+            stream: !!r.stream,
+        }));
     }
 
     /**

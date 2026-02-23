@@ -17,7 +17,10 @@
       "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && npm run build 2>&1)",
       "Bash(ssh:*)",
       "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && bash scripts/deploy-vps.sh 2>&1)",
-      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && npm run build 2>&1 && bash scripts/deploy-vps.sh 2>&1)"
+      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && npm run build 2>&1 && bash scripts/deploy-vps.sh 2>&1)",
+      "Bash(curl -s http://187.77.0.157:3777/health | python3 -m json.tool 2>&1)",
+      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && bash scripts/stress-test.sh 2>&1)",
+      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && bash scripts/quick-test.sh 2>&1)"
     ]
   }
 }
