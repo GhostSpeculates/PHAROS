@@ -25,11 +25,14 @@ interface ModelPricing {
 const PRICING_DEFAULTS: Record<string, ModelPricing> = {
     // ─── Free Tier ───
     'google/gemini-2.0-flash': { inputPerMillion: 0, outputPerMillion: 0 },
+    'google/gemini-2.5-flash': { inputPerMillion: 0.15, outputPerMillion: 0.60 },
     'groq/llama-3.3-70b-versatile': { inputPerMillion: 0.59, outputPerMillion: 0.79 },
 
     // ─── Economical Tier ───
     'deepseek/deepseek-chat': { inputPerMillion: 0.14, outputPerMillion: 0.28 },
     'mistral/mistral-large-latest': { inputPerMillion: 2.0, outputPerMillion: 6.0 },
+    'moonshot/kimi-k2': { inputPerMillion: 0.6, outputPerMillion: 2.0 },
+    'xai/grok-3-mini-fast': { inputPerMillion: 0.3, outputPerMillion: 0.5 },
 
     // ─── Premium Tier ───
     'anthropic/claude-sonnet-4-20250514': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
@@ -43,6 +46,9 @@ const PRICING_DEFAULTS: Record<string, ModelPricing> = {
 
 // Active pricing table — starts as a copy of defaults, can be overridden by config
 let PRICING: Record<string, ModelPricing> = { ...PRICING_DEFAULTS };
+
+// Track which unknown models we've already warned about (log once per model)
+const warnedModels = new Set<string>();
 
 /**
  * Initialize pricing from config values.
@@ -80,7 +86,13 @@ export function calculateCost(
     const pricing = PRICING[key];
 
     if (!pricing) {
-        // Unknown model — assume moderate pricing
+        // Unknown model — assume moderate pricing, warn once
+        if (!warnedModels.has(key)) {
+            warnedModels.add(key);
+            // Using console.warn here since this module doesn't have a logger instance.
+            // The warning is important: $1/$3 fallback is wrong for frontier models ($15/$75).
+            console.warn(`[pharos] Unknown model pricing for "${key}" — using $1/$3 per million fallback`);
+        }
         return ((tokensIn * 1.0) / 1_000_000) + ((tokensOut * 3.0) / 1_000_000);
     }
 

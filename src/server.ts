@@ -52,7 +52,9 @@ export async function createServer(config: PharosConfig): Promise<{
     });
 
     // Register CORS — configurable via PHAROS_CORS_ORIGINS env var (comma-separated)
-    const corsOrigins = process.env.PHAROS_CORS_ORIGINS?.split(',') || true;
+    const corsOrigins = process.env.PHAROS_CORS_ORIGINS
+        ? process.env.PHAROS_CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
+        : true;
     await app.register(cors, {
         origin: corsOrigins,
         methods: ['GET', 'POST', 'OPTIONS'],

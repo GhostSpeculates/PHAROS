@@ -437,7 +437,9 @@ ${recentRows}
                             }
                         }
 
-                        sendSSEDone(reply);
+                        if (!sendSSEDone(reply)) {
+                            logger.debug({ requestId }, 'sendSSEDone failed (client likely disconnected)');
+                        }
 
                         // Record per-provider latency
                         const providerLatency = Date.now() - requestStartTime - (classification.latencyMs ?? 0);
@@ -486,7 +488,9 @@ ${recentRows}
                                     code: 'stream_error',
                                 },
                             });
-                            sendSSEDone(reply);
+                            if (!sendSSEDone(reply)) {
+                                logger.debug({ requestId }, 'sendSSEDone failed after stream error (client likely disconnected)');
+                            }
                             return;
                         }
 

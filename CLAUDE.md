@@ -203,8 +203,8 @@ src/
 
 - **Framework**: Vitest 4
 - **Test files**: `src/__tests__/*.test.ts`
-- **Coverage**: tier-resolver (23), cost-calculator (20), auth middleware (9), ID generators (10), config schema (38), classifier (11)
-- **Total**: 222 tests, all passing (111 per src + dist)
+- **Coverage**: tier-resolver (23), cost-calculator (20), auth middleware (9), ID generators (10), config schema (38), classifier (11), failover (15), tracking-store (13), router (15), context (21), stream (10)
+- **Total**: 370 tests, all passing (185 src + 185 dist)
 - Run: `npm test` or `npm run test:watch`
 
 ## Roadmap Status
@@ -213,8 +213,12 @@ src/
   - Routing, classification, multi-provider (8), failover, tracking, security, tests
   - Classifier failover chain (Groq → Kimi → xAI → fallback)
   - Input truncation to prevent classifier context limit failures
-  - Overnight hardening (Restart=always, journald limits)
-  - 222 tests passing
+  - Systemd: Restart=always, journald 500M limit
+  - Per-provider timeout/cooldown from config (ProviderRegistry)
+  - presence_penalty / frequency_penalty forwarded (OpenAI-compat + Google)
+  - Unknown model pricing warns once per model
+  - CORS origin parsing trims whitespace
+  - 370 tests passing
 - **Phase 2 (Intelligence)**: NOT STARTED — semantic caching, conversation-aware routing, prompt caching
 - **Phase 3 (Dashboard)**: NOT STARTED — web UI (React SPA), config UI, real-time feed
 - **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker, docs site

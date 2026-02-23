@@ -66,6 +66,9 @@ export class TrackingStore {
             this.db.exec("ALTER TABLE requests ADD COLUMN classifier_provider TEXT DEFAULT 'unknown'");
         }
 
+        // Index on classifier_provider — must run after migration adds the column
+        this.db.exec('CREATE INDEX IF NOT EXISTS idx_requests_classifier_provider ON requests(classifier_provider)');
+
         this.insertStmt = this.db.prepare(`
       INSERT INTO requests (
         id, timestamp, tier, provider, model,
@@ -108,7 +111,10 @@ export class TrackingStore {
      * Record a completed request.
      */
     record(record: RequestRecord): void {
-        if (this.closed) return;
+        if (this.closed) {
+            this.logger.warn({ recordId: record.id }, 'Tracking record dropped — store already closed');
+            return;
+        }
         try {
             this.insertStmt.run({
                 ...record,

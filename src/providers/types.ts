@@ -18,6 +18,10 @@ export interface ChatRequest {
     stream?: boolean;
     topP?: number;
     stop?: string[];
+    /** Penalize tokens by their existing frequency in the text so far. -2.0 to 2.0. */
+    presencePenalty?: number;
+    /** Penalize tokens by how often they've appeared so far. -2.0 to 2.0. */
+    frequencyPenalty?: number;
     /** Anthropic extended thinking config — passed through when routing to Anthropic, ignored for other providers. */
     thinking?: ThinkingConfig;
 }

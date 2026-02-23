@@ -38,6 +38,8 @@ export class GoogleProvider extends LLMProvider {
                     ...(request.maxTokens ? { maxOutputTokens: request.maxTokens } : {}),
                     ...(request.topP !== undefined ? { topP: request.topP } : {}),
                     ...(request.stop ? { stopSequences: request.stop } : {}),
+                    ...(request.presencePenalty !== undefined ? { presencePenalty: request.presencePenalty } : {}),
+                    ...(request.frequencyPenalty !== undefined ? { frequencyPenalty: request.frequencyPenalty } : {}),
                     httpOptions: { timeout: this.timeoutMs },
                 },
             });
@@ -78,6 +80,8 @@ export class GoogleProvider extends LLMProvider {
                     ...(request.maxTokens ? { maxOutputTokens: request.maxTokens } : {}),
                     ...(request.topP !== undefined ? { topP: request.topP } : {}),
                     ...(request.stop ? { stopSequences: request.stop } : {}),
+                    ...(request.presencePenalty !== undefined ? { presencePenalty: request.presencePenalty } : {}),
+                    ...(request.frequencyPenalty !== undefined ? { frequencyPenalty: request.frequencyPenalty } : {}),
                     httpOptions: { timeout: this.timeoutMs },
                 },
             });
@@ -101,7 +105,15 @@ export class GoogleProvider extends LLMProvider {
 
             this.recordSuccess();
 
-            // Final chunk with usage
+            // Final chunk with usage — default to zeroes if stream never sent usage metadata
+            if (!lastUsage) {
+                this.logger.warn(
+                    { model: request.model },
+                    'Google stream completed without usageMetadata — defaulting to zero usage',
+                );
+                lastUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+            }
+
             yield {
                 content: '',
                 finishReason: 'stop',
