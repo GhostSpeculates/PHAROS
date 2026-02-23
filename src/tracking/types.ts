@@ -11,6 +11,7 @@ export interface RequestRecord {
     classificationScore: number;
     classificationType: string;
     classificationLatencyMs: number;
+    classifierProvider: string;
     tokensIn: number;
     tokensOut: number;
     estimatedCost: number;

@@ -36,8 +36,7 @@ function makeConfig(apiKey: string): PharosConfig {
         server: { port: 3777, host: '0.0.0.0' },
         auth: { apiKey },
         classifier: {
-            provider: 'google',
-            model: 'gemini-2.0-flash',
+            providers: [{ provider: 'google', model: 'gemini-2.0-flash' }],
             fallbackTier: 'economical',
             timeoutMs: 5000,
         },

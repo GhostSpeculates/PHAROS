@@ -15,11 +15,17 @@ auth:
 # The model used to classify query complexity
 # Supports any OpenAI-compatible provider (groq, xai, deepseek, openai, etc.)
 classifier:
-  provider: groq
-  model: llama-3.3-70b-versatile
-  # Fallback tier if classifier fails (free | economical | premium | frontier)
+  # Classifier providers tried in order (failover chain)
+  providers:
+    - provider: groq
+      model: llama-3.3-70b-versatile
+    - provider: moonshot
+      model: kimi-k2
+    - provider: xai
+      model: grok-3-mini-fast
+  # Fallback tier if ALL classifier providers fail
   fallbackTier: premium
-  # Max time to wait for classification (ms)
+  # Max time to wait for classification per provider (ms)
   timeoutMs: 5000
 
 # Routing tiers — score ranges map to model pools
@@ -35,10 +41,12 @@ tiers:
   economical:
     scoreRange: [4, 6]
     models:
-      - provider: deepseek
-        model: deepseek-chat
       - provider: groq
         model: llama-3.3-70b-versatile
+      - provider: moonshot
+        model: kimi-k2
+      - provider: deepseek
+        model: deepseek-chat
       - provider: openai
         model: gpt-4o
       # - provider: mistral
@@ -97,6 +105,11 @@ providers:
     baseUrl: https://api.x.ai/v1
     timeoutMs: 30000
     healthCooldownMs: 60000
+  moonshot:
+    apiKeyEnv: MOONSHOT_API_KEY
+    baseUrl: https://api.moonshot.cn/v1
+    timeoutMs: 30000
+    healthCooldownMs: 60000
 
 # Model pricing — cost per million tokens (input/output)
 # These override the hardcoded defaults in the cost calculator
@@ -141,7 +154,11 @@ pricing:
     model: o3
     inputCostPerMillion: 10.0
     outputCostPerMillion: 40.0
-  # ─── Classifier ───
+  # ─── Classifier / Economical ───
+  - provider: moonshot
+    model: kimi-k2
+    inputCostPerMillion: 0.50
+    outputCostPerMillion: 2.50
   - provider: xai
     model: grok-3-mini-fast
     inputCostPerMillion: 0.30

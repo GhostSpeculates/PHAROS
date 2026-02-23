@@ -24,4 +24,6 @@ export interface ClassificationResult {
     latencyMs: number;
     /** Whether this was a fallback (classifier failed) */
     isFallback: boolean;
+    /** Which classifier provider handled this request */
+    classifierProvider: string;
 }

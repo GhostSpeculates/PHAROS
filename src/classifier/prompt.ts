@@ -1,6 +1,6 @@
 /**
  * Classification prompt for scoring query complexity.
- * This runs on Gemini Flash (free tier) for every incoming request.
+ * This runs on a lightweight classifier model for every incoming request.
  */
 
 export const CLASSIFICATION_PROMPT = `You are a query complexity classifier for an AI routing system. Your job is to score how powerful an AI model is needed to answer the user's message well.
@@ -53,6 +53,12 @@ CRITICAL RULES:
 Respond ONLY with JSON (no markdown, no explanation):
 {"score": N, "type": "..."}`;
 
+/** Max characters per individual message sent to the classifier. */
+const MAX_PER_MESSAGE = 1000;
+
+/** Max total characters for the classifier input. */
+const MAX_TOTAL = 4000;
+
 /**
  * Extract text content from a message, handling both string and array formats.
  */
@@ -69,23 +75,46 @@ function extractTextContent(content: unknown): string {
 }
 
 /**
- * Build the full classification input from the messages array.
+ * Truncate a string to a max length, adding a marker if truncated.
+ */
+function truncate(text: string, maxLen: number): string {
+    if (text.length <= maxLen) return text;
+    return text.slice(0, maxLen) + '...[truncated]';
+}
+
+/**
+ * Build the classification input from the messages array.
+ *
+ * Keeps the classifier input small to avoid hitting provider token limits:
+ * - System messages: first one only, truncated to 1000 chars
+ * - User messages: last 3 only, each truncated to 1000 chars
+ * - Total output capped at 4000 chars
  */
 export function buildClassificationInput(
     messages: Array<{ role: string; content: unknown }>,
 ): string {
-    // Include system messages for context awareness
-    const relevant = messages.filter((m) => m.role === 'system' || m.role === 'user');
+    const parts: string[] = [];
 
-    // Take last 3 messages to keep classification fast
-    const recent = relevant.slice(-3);
+    // Include first system message (truncated)
+    const systemMsg = messages.find((m) => m.role === 'system');
+    if (systemMsg) {
+        const text = extractTextContent(systemMsg.content);
+        parts.push(`[SYSTEM]: ${truncate(text, MAX_PER_MESSAGE)}`);
+    }
 
-    const parts = recent.map((m) => `[${m.role.toUpperCase()}]: ${extractTextContent(m.content)}`);
+    // Include last 3 user messages (each truncated)
+    const userMsgs = messages.filter((m) => m.role === 'user');
+    const recentUsers = userMsgs.slice(-3);
+    for (const msg of recentUsers) {
+        const text = extractTextContent(msg.content);
+        parts.push(`[USER]: ${truncate(text, MAX_PER_MESSAGE)}`);
+    }
+
     const combined = parts.join('\n\n');
 
-    // Truncate to ~4000 chars to stay within classifier model token limits (e.g. Groq 12K TPM)
-    if (combined.length > 4000) {
-        return combined.slice(0, 4000) + '\n[...truncated]';
+    // Final safety cap
+    if (combined.length > MAX_TOTAL) {
+        return combined.slice(0, MAX_TOTAL) + '\n[...truncated]';
     }
     return combined;
 }
