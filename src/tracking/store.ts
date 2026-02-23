@@ -62,16 +62,21 @@ export class TrackingStore {
         if (!columnNames.has('user_message_preview')) {
             this.db.exec('ALTER TABLE requests ADD COLUMN user_message_preview TEXT');
         }
+        if (!columnNames.has('classifier_provider')) {
+            this.db.exec("ALTER TABLE requests ADD COLUMN classifier_provider TEXT DEFAULT 'unknown'");
+        }
 
         this.insertStmt = this.db.prepare(`
       INSERT INTO requests (
         id, timestamp, tier, provider, model,
         classification_score, classification_type, classification_latency_ms,
+        classifier_provider,
         tokens_in, tokens_out, estimated_cost, baseline_cost, savings,
         total_latency_ms, stream, is_direct_route, user_message_preview
       ) VALUES (
         @id, @timestamp, @tier, @provider, @model,
         @classificationScore, @classificationType, @classificationLatencyMs,
+        @classifierProvider,
         @tokensIn, @tokensOut, @estimatedCost, @baselineCost, @savings,
         @totalLatencyMs, @stream, @isDirectRoute, @userMessagePreview
       )
@@ -107,6 +112,7 @@ export class TrackingStore {
         try {
             this.insertStmt.run({
                 ...record,
+                classifierProvider: record.classifierProvider ?? 'unknown',
                 stream: record.stream ? 1 : 0,
                 isDirectRoute: record.isDirectRoute ? 1 : 0,
                 userMessagePreview: record.userMessagePreview ?? null,
@@ -181,13 +187,14 @@ export class TrackingStore {
         cost: number;
         latencyMs: number;
         stream: boolean;
+        classifierProvider: string;
     }> {
         const rows = this.db
             .prepare(
                 `SELECT
                     timestamp, user_message_preview, classification_score, classification_type,
                     tier, provider, model, tokens_in + tokens_out as tokens,
-                    estimated_cost, total_latency_ms, stream
+                    estimated_cost, total_latency_ms, stream, classifier_provider
                 FROM requests
                 ORDER BY timestamp DESC
                 LIMIT ?`,
@@ -206,6 +213,7 @@ export class TrackingStore {
             cost: r.estimated_cost,
             latencyMs: r.total_latency_ms,
             stream: !!r.stream,
+            classifierProvider: r.classifier_provider ?? 'unknown',
         }));
     }
 

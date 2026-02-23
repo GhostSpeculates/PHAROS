@@ -20,7 +20,27 @@
       "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && npm run build 2>&1 && bash scripts/deploy-vps.sh 2>&1)",
       "Bash(curl -s http://187.77.0.157:3777/health | python3 -m json.tool 2>&1)",
       "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && bash scripts/stress-test.sh 2>&1)",
-      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && bash scripts/quick-test.sh 2>&1)"
+      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && bash scripts/quick-test.sh 2>&1)",
+      "Bash(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new root@187.77.0.157 \"cat /root/pharos/.env 2>/dev/null | grep PHAROS_API_KEY || echo 'NO_AUTH_KEY_SET'\")",
+      "Bash(ssh root@187.77.0.157 \"curl -s http://localhost:3777/health -H 'Authorization: Bearer pharos-HozoPDBZFc4uqAs19Od_0MQuAQg3drSD'\")",
+      "Bash(ssh root@187.77.0.157 \"curl -s http://localhost:3777/v1/stats -H 'Authorization: Bearer pharos-HozoPDBZFc4uqAs19Od_0MQuAQg3drSD'\")",
+      "Bash(ssh root@187.77.0.157 \"curl -s http://localhost:3777/v1/stats/recent -H 'Authorization: Bearer pharos-HozoPDBZFc4uqAs19Od_0MQuAQg3drSD'\")",
+      "Bash(ssh root@187.77.0.157 \"cat /root/pharos/.env\")",
+      "Bash(ssh root@187.77.0.157 \"sed -i 's/^MISTRAL_API_KEY=$/MISTRAL_API_KEY=e8df3045-47c3-4da5-9979-6e5d3d3dd8b2/' /root/pharos/.env && grep MISTRAL /root/pharos/.env\")",
+      "Bash(ssh root@187.77.0.157 \"grep -n MISTRAL /root/pharos/.env\")",
+      "Bash(ssh root@187.77.0.157 \"sed -i 's|^MISTRAL_API_KEY=.*|MISTRAL_API_KEY=e8df3045-47c3-4da5-9979-6e5d3d3dd8b2|' /root/pharos/.env && grep MISTRAL /root/pharos/.env\")",
+      "Bash(scp root@187.77.0.157:/root/pharos/.env /Users/wowruben/Documents/PHAROS/.env)",
+      "Bash(npm run build 2>&1)",
+      "Bash(npm install 2>&1)",
+      "Bash(bash /Users/wowruben/Documents/PHAROS/scripts/deploy-vps.sh 2>&1)",
+      "Bash(ssh root@187.77.0.157 \"curl -s http://localhost:3777/health -H 'Authorization: Bearer pharos-HozoPDBZFc4uqAs19Od_0MQuAQg3drSD'\" | python3 -m json.tool)",
+      "Bash(ssh root@187.77.0.157 \"grep -A5 'economical:' /root/pharos/config/pharos.default.yaml\")",
+      "Bash(ssh root@187.77.0.157 \"curl -s -D - -o /dev/null -X POST http://localhost:3777/v1/chat/completions -H 'Content-Type: application/json' -H 'Authorization: Bearer pharos-HozoPDBZFc4uqAs19Od_0MQuAQg3drSD' -d '{\\\\\"model\\\\\":\\\\\"pharos-auto\\\\\",\\\\\"messages\\\\\":[{\\\\\"role\\\\\":\\\\\"user\\\\\",\\\\\"content\\\\\":\\\\\"Compare the pros and cons of React vs Vue for a medium-sized web app\\\\\"}]}' 2>&1 | grep -iE '^\\(HTTP|X-Pharos\\)'\")",
+      "Bash(ssh root@187.77.0.157 \"sed -i 's/^Restart=on-failure$/Restart=always/' /etc/systemd/system/pharos.service && grep '^Restart=' /etc/systemd/system/pharos.service\")",
+      "Bash(ssh root@187.77.0.157 \"mkdir -p /etc/systemd/journald.conf.d && cat > /etc/systemd/journald.conf.d/pharos.conf << 'EOF'\n[Journal]\nSystemMaxUse=500M\nSystemMaxFileSize=50M\nEOF\ncat /etc/systemd/journald.conf.d/pharos.conf && systemctl restart systemd-journald\")",
+      "Bash(npx tsc --noEmit 2>&1)",
+      "Bash(npm test 2>&1)",
+      "Bash(ssh root@187.77.0.157 \"grep MOONSHOT /root/pharos/.env || echo 'MOONSHOT_API_KEY not found, adding...' && echo 'MOONSHOT_API_KEY=sk-xL6j1pipQZnCi7bBnEqRJvra3r4lzRcCB9HOiKoDUba00dkP' >> /root/pharos/.env && grep MOONSHOT /root/pharos/.env\")"
     ]
   }
 }

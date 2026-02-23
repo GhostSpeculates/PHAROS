@@ -81,12 +81,13 @@ export function registerRoutes(
 <td><span style="color:${tierColor}">${r.tier}</span></td>
 <td>${r.provider}</td>
 <td style="font-size:.75rem">${r.model}</td>
+<td style="font-size:.75rem;color:#737373">${r.classifierProvider ?? ''}</td>
 <td>${r.tokens.toLocaleString()}</td>
 <td>$${r.cost.toFixed(6)}</td>
 <td>${r.latencyMs.toLocaleString()}ms</td>
 </tr>`;
             }).join('')
-            : '<tr><td colspan="10" style="text-align:center;color:#525252">No requests yet</td></tr>';
+            : '<tr><td colspan="11" style="text-align:center;color:#525252">No requests yet</td></tr>';
 
         const html = `<!DOCTYPE html>
 <html lang="en">
@@ -181,7 +182,7 @@ ${Object.entries(status).map(([name, info]: [string, any]) => {
 <h2>Recent Requests <span class="refresh" id="countdown">refreshing in 30s</span></h2>
 <div class="recent-table">
 <table>
-<tr><th>Time</th><th>Message</th><th>Score</th><th>Type</th><th>Tier</th><th>Provider</th><th>Model</th><th>Tokens</th><th>Cost</th><th>Latency</th></tr>
+<tr><th>Time</th><th>Message</th><th>Score</th><th>Type</th><th>Tier</th><th>Provider</th><th>Model</th><th>Classifier</th><th>Tokens</th><th>Cost</th><th>Latency</th></tr>
 ${recentRows}
 </table>
 </div>
@@ -677,6 +678,7 @@ function trackRequest(
         classificationScore: classification.score,
         classificationType: classification.type,
         classificationLatencyMs: classification.latencyMs,
+        classifierProvider: classification.classifierProvider ?? 'unknown',
         tokensIn: usage.promptTokens,
         tokensOut: usage.completionTokens,
         estimatedCost: cost,

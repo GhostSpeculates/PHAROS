@@ -5,30 +5,33 @@ import { TASK_TYPES } from './types.js';
 import { CLASSIFICATION_PROMPT, buildClassificationInput } from './prompt.js';
 import type { Logger } from '../utils/logger.js';
 
+interface ClassifierProvider {
+    name: string;
+    client: OpenAI;
+    model: string;
+}
+
 /**
  * Query Classifier — The Brain of Pharos
  *
  * Uses a lightweight, cheap model to analyze each incoming query and
  * determine how complex it is. This score drives the routing decision.
  *
- * Supports any OpenAI-compatible provider (Groq, xAI, DeepSeek, OpenAI, etc.)
- * or Google Gemini via the Google GenAI SDK.
+ * Supports a failover chain of OpenAI-compatible classifier providers.
+ * If the primary fails, tries the next in line. Only falls back to a
+ * static tier score if ALL classifier providers are exhausted.
  */
 export class QueryClassifier {
-    private client: OpenAI | null = null;
-    private model: string;
+    private classifierProviders: ClassifierProvider[] = [];
     private fallbackTier: string;
     private timeoutMs: number;
     private logger: Logger;
     private tierScoreRanges: Record<string, [number, number]>;
-    private providerName: string;
 
     constructor(config: PharosConfig, logger: Logger) {
-        this.model = config.classifier.model;
         this.fallbackTier = config.classifier.fallbackTier;
         this.timeoutMs = config.classifier.timeoutMs;
         this.logger = logger;
-        this.providerName = config.classifier.provider;
 
         // Store tier score ranges so fallback scores can be derived from config
         this.tierScoreRanges = {};
@@ -36,84 +39,115 @@ export class QueryClassifier {
             this.tierScoreRanges[name] = tier.scoreRange as [number, number];
         }
 
-        // Resolve API key and base URL from the provider config
-        const providerConfig = config.providers[this.providerName];
-        if (!providerConfig) {
-            this.logger.warn(
-                { provider: this.providerName },
-                'Classifier provider not found in config — will use fallback for all queries',
-            );
-            return;
+        // Build classifier provider chain
+        for (const entry of config.classifier.providers) {
+            const providerConfig = config.providers[entry.provider];
+            if (!providerConfig) {
+                logger.warn(
+                    { provider: entry.provider },
+                    'Classifier provider not found in providers config, skipping',
+                );
+                continue;
+            }
+
+            const apiKey = process.env[providerConfig.apiKeyEnv];
+            if (!apiKey) {
+                logger.warn(
+                    { provider: entry.provider, envVar: providerConfig.apiKeyEnv },
+                    'No API key for classifier provider, skipping',
+                );
+                continue;
+            }
+
+            const baseURL = providerConfig.baseUrl ?? 'https://api.openai.com/v1';
+            this.classifierProviders.push({
+                name: entry.provider,
+                client: new OpenAI({ apiKey, baseURL }),
+                model: entry.model,
+            });
         }
 
-        const apiKey = process.env[providerConfig.apiKeyEnv];
-        if (!apiKey) {
-            this.logger.warn(
-                { provider: this.providerName, envVar: providerConfig.apiKeyEnv },
-                'No API key found for classifier provider — will use fallback for all queries',
-            );
-            return;
+        if (this.classifierProviders.length > 0) {
+            const chain = this.classifierProviders.map((p) => `${p.name}/${p.model}`).join(' → ');
+            logger.info(`Query classifier initialized (${chain})`);
+        } else {
+            logger.warn('No classifier providers available — will use fallback for all queries');
         }
-
-        // Build an OpenAI-compatible client pointed at the provider's base URL
-        const baseURL = providerConfig.baseUrl ?? 'https://api.openai.com/v1';
-        this.client = new OpenAI({ apiKey, baseURL });
-        this.logger.info(
-            `Query classifier initialized (${this.providerName}/${this.model})`,
-        );
     }
 
     /**
      * Classify a set of messages and return a complexity score + task type.
+     * Tries each classifier provider in order; falls back to static score if all fail.
      */
     async classify(
         messages: Array<{ role: string; content: unknown }>,
     ): Promise<ClassificationResult> {
         const startTime = Date.now();
 
-        // If no classifier available, return fallback
-        if (!this.client) {
-            return this.fallback(startTime, 'no_api_key');
+        // If no classifier providers available, return fallback
+        if (this.classifierProviders.length === 0) {
+            return this.fallback(startTime, 'no_providers');
         }
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+        // Build truncated input once (shared across all provider attempts)
+        const userInput = buildClassificationInput(messages);
 
-        try {
-            const userInput = buildClassificationInput(messages);
+        // Try each classifier provider in order
+        for (const cp of this.classifierProviders) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
-            const response = await this.client.chat.completions.create(
-                {
-                    model: this.model,
-                    messages: [
-                        { role: 'system', content: CLASSIFICATION_PROMPT },
-                        { role: 'user', content: userInput },
-                    ],
-                    temperature: 0,
-                    max_tokens: 50,
-                },
-                { signal: controller.signal },
-            );
+            try {
+                const response = await cp.client.chat.completions.create(
+                    {
+                        model: cp.model,
+                        messages: [
+                            { role: 'system', content: CLASSIFICATION_PROMPT },
+                            { role: 'user', content: userInput },
+                        ],
+                        temperature: 0,
+                        max_tokens: 50,
+                    },
+                    { signal: controller.signal },
+                );
 
-            const text = response.choices?.[0]?.message?.content;
-            if (!text) {
-                return this.fallback(startTime, 'empty_response');
+                const text = response.choices?.[0]?.message?.content;
+                if (!text) {
+                    this.logger.warn(
+                        { provider: cp.name },
+                        'Classifier returned empty response, trying next',
+                    );
+                    continue;
+                }
+
+                const result = this.parseResponse(text, startTime, cp.name);
+                if (result) return result;
+                // parseResponse returned null (invalid score), try next provider
+            } catch (error) {
+                const errMsg = error instanceof Error ? error.message : 'unknown';
+                this.logger.warn(
+                    { provider: cp.name, model: cp.model, error: errMsg },
+                    'Classifier provider failed, trying next',
+                );
+            } finally {
+                clearTimeout(timeoutId);
             }
-
-            return this.parseResponse(text, startTime);
-        } catch (error) {
-            const errMsg = error instanceof Error ? error.message : 'unknown';
-            this.logger.warn({ error: errMsg }, 'Classifier failed, using fallback');
-            return this.fallback(startTime, errMsg);
-        } finally {
-            clearTimeout(timeoutId);
         }
+
+        // All providers failed
+        this.logger.warn('All classifier providers failed, using fallback');
+        return this.fallback(startTime, 'all_providers_failed');
     }
 
     /**
      * Parse the JSON response from the classifier.
+     * Returns null if parsing fails (caller should try next provider).
      */
-    private parseResponse(text: string, startTime: number): ClassificationResult {
+    private parseResponse(
+        text: string,
+        startTime: number,
+        classifierProvider: string,
+    ): ClassificationResult | null {
         try {
             // Strip markdown code fences if present
             const cleaned = text
@@ -127,10 +161,10 @@ export class QueryClassifier {
             const rawScore = Number(parsed.score);
             if (!Number.isFinite(rawScore) || rawScore < 1 || rawScore > 10) {
                 this.logger.warn(
-                    { rawScore: parsed.score },
-                    'Classifier returned invalid score (not a number between 1-10), using fallback',
+                    { rawScore: parsed.score, provider: classifierProvider },
+                    'Classifier returned invalid score, trying next',
                 );
-                return this.fallback(startTime, 'invalid_score');
+                return null;
             }
 
             const score = Math.max(1, Math.min(10, Math.round(rawScore)));
@@ -141,17 +175,22 @@ export class QueryClassifier {
                 type,
                 latencyMs: Date.now() - startTime,
                 isFallback: false,
+                classifierProvider,
             };
 
             this.logger.debug({ classification: result }, 'Query classified');
             return result;
         } catch {
-            return this.fallback(startTime, 'parse_error');
+            this.logger.warn(
+                { provider: classifierProvider },
+                'Failed to parse classifier response, trying next',
+            );
+            return null;
         }
     }
 
     /**
-     * Return a safe fallback classification when the classifier fails.
+     * Return a safe fallback classification when all classifier providers fail.
      * Derives the fallback score from the tier's scoreRange midpoint
      * instead of using hardcoded values.
      */
@@ -174,6 +213,7 @@ export class QueryClassifier {
             type: 'analysis',
             latencyMs: Date.now() - startTime,
             isFallback: true,
+            classifierProvider: 'fallback',
         };
 
         this.logger.debug({ reason, fallbackScore: result.score }, 'Using fallback classification');

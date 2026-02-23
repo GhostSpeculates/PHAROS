@@ -32,14 +32,40 @@ export const ProviderConfigSchema = z.object({
     healthCooldownMs: z.number().min(1000).default(60000),
 });
 
+// ─── Classifier provider entry ───
+export const ClassifierProviderEntrySchema = z.object({
+    provider: z.string(),
+    model: z.string(),
+});
+
 // ─── Classifier configuration ───
+// Supports both new format (providers array) and legacy (single provider/model).
 export const ClassifierConfigSchema = z.object({
-    provider: z.string().default('google'),
-    model: z.string().default('gemini-2.0-flash'),
+    providers: z.array(ClassifierProviderEntrySchema).optional(),
+    // Legacy format — auto-wrapped into providers array
+    provider: z.string().optional(),
+    model: z.string().optional(),
     fallbackTier: z
         .enum(['free', 'economical', 'premium', 'frontier'])
         .default('economical'),
     timeoutMs: z.number().positive().default(5000),
+}).transform((data) => {
+    // Backward compatibility: wrap single provider/model into providers array
+    let providers: Array<{ provider: string; model: string }>;
+    if (!data.providers) {
+        if (data.provider && data.model) {
+            providers = [{ provider: data.provider, model: data.model }];
+        } else {
+            providers = [{ provider: 'google', model: 'gemini-2.0-flash' }];
+        }
+    } else {
+        providers = data.providers;
+    }
+    return {
+        providers,
+        fallbackTier: data.fallbackTier,
+        timeoutMs: data.timeoutMs,
+    };
 });
 
 // ─── Tracking configuration ───

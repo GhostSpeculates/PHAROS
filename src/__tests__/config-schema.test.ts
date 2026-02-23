@@ -5,6 +5,7 @@ import {
     ModelEntrySchema,
     ProviderConfigSchema,
     ClassifierConfigSchema,
+    ClassifierProviderEntrySchema,
     TrackingConfigSchema,
     ServerConfigSchema,
     AuthConfigSchema,
@@ -23,8 +24,9 @@ describe('PharosConfigSchema', () => {
                 expect(result.data.server.port).toBe(3777);
                 expect(result.data.server.host).toBe('0.0.0.0');
                 expect(result.data.auth.apiKey).toBe('');
-                expect(result.data.classifier.provider).toBe('google');
-                expect(result.data.classifier.model).toBe('gemini-2.0-flash');
+                expect(result.data.classifier.providers).toEqual([
+                    { provider: 'google', model: 'gemini-2.0-flash' },
+                ]);
                 expect(result.data.tracking.enabled).toBe(true);
                 expect(result.data.logging.level).toBe('info');
             }
@@ -289,14 +291,48 @@ describe('ProviderConfigSchema', () => {
 // ClassifierConfigSchema
 // ────────────────────────────────────────────────────────────────
 describe('ClassifierConfigSchema', () => {
-    it('applies all defaults when given empty object', () => {
+    it('applies defaults when given empty object (creates default providers array)', () => {
         const result = ClassifierConfigSchema.safeParse({});
         expect(result.success).toBe(true);
         if (result.success) {
-            expect(result.data.provider).toBe('google');
-            expect(result.data.model).toBe('gemini-2.0-flash');
+            expect(result.data.providers).toEqual([
+                { provider: 'google', model: 'gemini-2.0-flash' },
+            ]);
             expect(result.data.fallbackTier).toBe('economical');
             expect(result.data.timeoutMs).toBe(5000);
+        }
+    });
+
+    it('accepts new providers array format', () => {
+        const result = ClassifierConfigSchema.safeParse({
+            providers: [
+                { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+                { provider: 'xai', model: 'grok-3-mini-fast' },
+            ],
+            fallbackTier: 'premium',
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.providers).toHaveLength(2);
+            expect(result.data.providers[0].provider).toBe('groq');
+            expect(result.data.providers[1].provider).toBe('xai');
+        }
+    });
+
+    it('backward compat: wraps legacy single provider/model into providers array', () => {
+        const result = ClassifierConfigSchema.safeParse({
+            provider: 'groq',
+            model: 'llama-3.3-70b-versatile',
+            fallbackTier: 'premium',
+            timeoutMs: 3000,
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.providers).toEqual([
+                { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+            ]);
+            expect(result.data.fallbackTier).toBe('premium');
+            expect(result.data.timeoutMs).toBe(3000);
         }
     });
 
@@ -310,6 +346,26 @@ describe('ClassifierConfigSchema', () => {
             const result = ClassifierConfigSchema.safeParse({ fallbackTier: tier });
             expect(result.success).toBe(true);
         }
+    });
+});
+
+// ────────────────────────────────────────────────────────────────
+// ClassifierProviderEntrySchema
+// ────────────────────────────────────────────────────────────────
+describe('ClassifierProviderEntrySchema', () => {
+    it('accepts valid entry', () => {
+        const result = ClassifierProviderEntrySchema.safeParse({ provider: 'groq', model: 'llama' });
+        expect(result.success).toBe(true);
+    });
+
+    it('rejects missing provider', () => {
+        const result = ClassifierProviderEntrySchema.safeParse({ model: 'llama' });
+        expect(result.success).toBe(false);
+    });
+
+    it('rejects missing model', () => {
+        const result = ClassifierProviderEntrySchema.safeParse({ provider: 'groq' });
+        expect(result.success).toBe(false);
     });
 });
 

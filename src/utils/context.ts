@@ -25,6 +25,8 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
     'llama-3.3-70b-versatile': 128_000,
     // xAI
     'grok-3-mini-fast': 131_072,
+    // Moonshot
+    'kimi-k2': 128_000,
 };
 
 /** Default context window when model isn't in the map. */
