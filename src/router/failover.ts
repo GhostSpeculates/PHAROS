@@ -37,6 +37,7 @@ export function findAvailableModel(
 
     for (const tierName of tierOrder) {
         const tier = config.tiers[tierName];
+        if (!tier) continue;
 
         for (const modelEntry of tier.models) {
             attempts++;
@@ -84,6 +85,7 @@ export function getCandidateModels(
 
     for (const tierName of tierOrder) {
         const tier = config.tiers[tierName];
+        if (!tier) continue;
         for (const modelEntry of tier.models) {
             if (registry.isAvailable(modelEntry.provider)) {
                 candidates.push({

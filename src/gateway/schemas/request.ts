@@ -24,7 +24,7 @@ export const ChatMessageSchema = z.object({
 
 export const ChatCompletionRequestSchema = z.object({
     model: z.string().default('pharos-auto'),
-    messages: z.array(ChatMessageSchema).min(1).max(100),
+    messages: z.array(ChatMessageSchema).min(1).max(500),
     temperature: z.number().min(0).max(2).optional(),
     max_tokens: z.number().int().positive().optional(),
     top_p: z.number().min(0).max(1).optional(),

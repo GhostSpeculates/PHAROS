@@ -29,10 +29,9 @@ export class ProviderRegistry {
      * Create provider instances for all configured providers that have API keys.
      */
     private initializeProviders(config: PharosConfig): void {
-        const timeoutMs = DEFAULT_TIMEOUT_MS;
-        const cooldownMs = DEFAULT_COOLDOWN_MS;
-
         for (const [name, providerConfig] of Object.entries(config.providers)) {
+            const timeoutMs = providerConfig.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+            const cooldownMs = providerConfig.healthCooldownMs ?? DEFAULT_COOLDOWN_MS;
             const apiKey = process.env[providerConfig.apiKeyEnv];
 
             let provider: LLMProvider;

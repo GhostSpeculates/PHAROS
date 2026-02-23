@@ -79,11 +79,19 @@ export class ModelRouter {
 
         // Determine which tier this model belongs to
         let tier: TierName = 'premium'; // default
+        let foundInTier = false;
         for (const [tierName, tierConfig] of Object.entries(this.config.tiers)) {
             if (tierConfig.models.some((m) => m.provider === providerName && m.model === modelName)) {
                 tier = tierName as TierName;
+                foundInTier = true;
                 break;
             }
+        }
+        if (!foundInTier) {
+            this.logger.warn(
+                { provider: providerName, model: modelName, defaultTier: 'premium' },
+                'Direct-routed model not found in any tier config — defaulting to premium',
+            );
         }
 
         return {

@@ -39,6 +39,11 @@ export function getTierFailoverOrder(startTier: TierName): TierName[] {
     const tierOrder: TierName[] = ['free', 'economical', 'premium', 'frontier'];
     const startIndex = tierOrder.indexOf(startTier);
 
+    // Unknown tier — default to full order starting from 'premium'
+    if (startIndex === -1) {
+        return ['premium', 'frontier', 'economical', 'free'];
+    }
+
     // Start from current tier, then try higher tiers, then lower tiers
     const result: TierName[] = [];
 
