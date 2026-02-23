@@ -2,11 +2,24 @@ import { z } from 'zod';
 
 /**
  * Zod schema for validating OpenAI-compatible chat completion requests.
+ *
+ * Content can be a plain string or an array of content parts (text, image_url)
+ * per the OpenAI API spec. Array format is used for multimodal messages.
  */
 
+const ContentPartSchema = z.union([
+    z.object({ type: z.literal('text'), text: z.string().max(500000) }),
+    z.object({ type: z.literal('image_url'), image_url: z.object({ url: z.string(), detail: z.string().optional() }) }),
+    // Catch-all for other content part types (e.g. audio, file)
+    z.object({ type: z.string() }).passthrough(),
+]);
+
 export const ChatMessageSchema = z.object({
-    role: z.enum(['system', 'user', 'assistant']),
-    content: z.string().max(500000),
+    role: z.enum(['system', 'user', 'assistant', 'tool']),
+    content: z.union([z.string().max(500000), z.array(ContentPartSchema), z.null()]),
+    name: z.string().optional(),
+    tool_call_id: z.string().optional(),
+    tool_calls: z.array(z.any()).optional(),
 });
 
 export const ChatCompletionRequestSchema = z.object({

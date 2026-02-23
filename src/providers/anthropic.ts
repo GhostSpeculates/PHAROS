@@ -151,11 +151,17 @@ export class AnthropicProvider extends LLMProvider {
 
         for (const msg of messages) {
             if (msg.role === 'system') {
-                system = (system ? system + '\n\n' : '') + msg.content;
-            } else {
+                // Extract text from string or array content
+                const text = typeof msg.content === 'string'
+                    ? msg.content
+                    : Array.isArray(msg.content)
+                        ? msg.content.filter((p: any) => p.type === 'text').map((p: any) => p.text).join(' ')
+                        : '';
+                system = (system ? system + '\n\n' : '') + text;
+            } else if (msg.role === 'user' || msg.role === 'assistant') {
                 converted.push({
-                    role: msg.role as 'user' | 'assistant',
-                    content: msg.content,
+                    role: msg.role,
+                    content: msg.content as any,
                 });
             }
         }

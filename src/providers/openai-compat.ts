@@ -42,10 +42,8 @@ export class OpenAICompatProvider extends LLMProvider {
             const response = await this.client.chat.completions.create(
                 {
                     model: request.model,
-                    messages: request.messages.map((m) => ({
-                        role: m.role,
-                        content: m.content,
-                    })),
+                    // Pass messages as-is; SDK handles string and array content
+                    messages: request.messages as any,
                     ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
                     ...(request.maxTokens ? { max_tokens: request.maxTokens } : {}),
                     ...(request.topP !== undefined ? { top_p: request.topP } : {}),
@@ -91,10 +89,8 @@ export class OpenAICompatProvider extends LLMProvider {
             const stream = await this.client.chat.completions.create(
                 {
                     model: request.model,
-                    messages: request.messages.map((m) => ({
-                        role: m.role,
-                        content: m.content,
-                    })),
+                    // Pass messages as-is; SDK handles string and array content
+                    messages: request.messages as any,
                     ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
                     ...(request.maxTokens ? { max_tokens: request.maxTokens } : {}),
                     ...(request.topP !== undefined ? { top_p: request.topP } : {}),

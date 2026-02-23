@@ -5,7 +5,19 @@
       "Bash(cd \"C:\\\\Users\\\\ruben\\\\OneDrive\\\\Desktop\\\\PHAROS\" && npx tsc --noEmit 2>&1)",
       "Bash(head:*)",
       "Bash(cd \"C:\\\\Users\\\\ruben\\\\OneDrive\\\\Desktop\\\\PHAROS\" && npx vitest run 2>&1)",
-      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && npm test 2>&1)"
+      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && npm test 2>&1)",
+      "Bash(node:*)",
+      "Bash(cd:*)",
+      "Bash(curl:*)",
+      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && npx tsc --noEmit 2>&1)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(sleep 2:*)",
+      "Bash(echo:*)",
+      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && npm run build 2>&1)",
+      "Bash(ssh:*)",
+      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && bash scripts/deploy-vps.sh 2>&1)",
+      "Bash(cd /c/Users/ruben/OneDrive/Desktop/PHAROS && npm run build 2>&1 && bash scripts/deploy-vps.sh 2>&1)"
     ]
   }
 }
