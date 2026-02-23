@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import type { PharosConfig } from '../config/schema.js';
 import type { ClassificationResult, TaskType } from './types.js';
 import { TASK_TYPES } from './types.js';
@@ -8,22 +8,27 @@ import type { Logger } from '../utils/logger.js';
 /**
  * Query Classifier — The Brain of Pharos
  *
- * Uses Gemini Flash (free tier) to analyze each incoming query and
+ * Uses a lightweight, cheap model to analyze each incoming query and
  * determine how complex it is. This score drives the routing decision.
+ *
+ * Supports any OpenAI-compatible provider (Groq, xAI, DeepSeek, OpenAI, etc.)
+ * or Google Gemini via the Google GenAI SDK.
  */
 export class QueryClassifier {
-    private genai: GoogleGenAI | null = null;
+    private client: OpenAI | null = null;
     private model: string;
     private fallbackTier: string;
     private timeoutMs: number;
     private logger: Logger;
     private tierScoreRanges: Record<string, [number, number]>;
+    private providerName: string;
 
     constructor(config: PharosConfig, logger: Logger) {
         this.model = config.classifier.model;
         this.fallbackTier = config.classifier.fallbackTier;
         this.timeoutMs = config.classifier.timeoutMs;
         this.logger = logger;
+        this.providerName = config.classifier.provider;
 
         // Store tier score ranges so fallback scores can be derived from config
         this.tierScoreRanges = {};
@@ -31,54 +36,71 @@ export class QueryClassifier {
             this.tierScoreRanges[name] = tier.scoreRange as [number, number];
         }
 
-        // Initialize the Google AI client
-        const apiKey = process.env[config.providers.google?.apiKeyEnv ?? 'GOOGLE_AI_API_KEY'];
-        if (apiKey) {
-            this.genai = new GoogleGenAI({ apiKey });
-            this.logger.info('Query classifier initialized (Gemini Flash)');
-        } else {
+        // Resolve API key and base URL from the provider config
+        const providerConfig = config.providers[this.providerName];
+        if (!providerConfig) {
             this.logger.warn(
-                'No Google AI API key found — classifier will use fallback tier for all queries',
+                { provider: this.providerName },
+                'Classifier provider not found in config — will use fallback for all queries',
             );
+            return;
         }
+
+        const apiKey = process.env[providerConfig.apiKeyEnv];
+        if (!apiKey) {
+            this.logger.warn(
+                { provider: this.providerName, envVar: providerConfig.apiKeyEnv },
+                'No API key found for classifier provider — will use fallback for all queries',
+            );
+            return;
+        }
+
+        // Build an OpenAI-compatible client pointed at the provider's base URL
+        const baseURL = providerConfig.baseUrl ?? 'https://api.openai.com/v1';
+        this.client = new OpenAI({ apiKey, baseURL });
+        this.logger.info(
+            `Query classifier initialized (${this.providerName}/${this.model})`,
+        );
     }
 
     /**
      * Classify a set of messages and return a complexity score + task type.
      */
     async classify(
-        messages: Array<{ role: string; content: string }>,
+        messages: Array<{ role: string; content: unknown }>,
     ): Promise<ClassificationResult> {
         const startTime = Date.now();
 
         // If no classifier available, return fallback
-        if (!this.genai) {
+        if (!this.client) {
             return this.fallback(startTime, 'no_api_key');
         }
 
-        // Use AbortController to cancel the request on timeout.
-        // The Google GenAI SDK supports abortSignal in the config, which
-        // allows us to properly abort the HTTP request rather than just
-        // racing a timeout promise (which would leave the request dangling).
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
         try {
             const userInput = buildClassificationInput(messages);
 
-            const response = await this.genai.models.generateContent({
-                model: this.model,
-                contents: `${CLASSIFICATION_PROMPT}\n\n---\n\nUser messages to classify:\n${userInput}`,
-                config: {
-                    abortSignal: controller.signal,
+            const response = await this.client.chat.completions.create(
+                {
+                    model: this.model,
+                    messages: [
+                        { role: 'system', content: CLASSIFICATION_PROMPT },
+                        { role: 'user', content: userInput },
+                    ],
+                    temperature: 0,
+                    max_tokens: 50,
                 },
-            });
+                { signal: controller.signal },
+            );
 
-            if (!response || !response.text) {
+            const text = response.choices?.[0]?.message?.content;
+            if (!text) {
                 return this.fallback(startTime, 'empty_response');
             }
 
-            return this.parseResponse(response.text, startTime);
+            return this.parseResponse(text, startTime);
         } catch (error) {
             const errMsg = error instanceof Error ? error.message : 'unknown';
             this.logger.warn({ error: errMsg }, 'Classifier failed, using fallback');

@@ -44,8 +44,9 @@ HTTP Request → Auth Middleware → Zod Validation → Classifier (Gemini Flash
 ## Tech Stack
 
 - **Runtime**: Node.js 20+ / TypeScript (ES2022, ESM)
-- **HTTP**: Fastify 5 with `@fastify/cors`
+- **HTTP**: Fastify 5 with `@fastify/cors`, `@fastify/rate-limit`
 - **Validation**: Zod
+- **Testing**: Vitest 4
 - **Providers**: `@anthropic-ai/sdk`, `@google/genai`, `openai`
 - **Database**: better-sqlite3 (request tracking)
 - **CLI**: Commander
@@ -60,6 +61,8 @@ npm run dev        # Start dev server (tsx watch)
 npm run build      # Compile TypeScript → dist/
 npm start          # Run compiled build
 npm run cli        # Run CLI (pharos init / pharos start)
+npm test           # Run tests (vitest)
+npm run test:watch # Run tests in watch mode
 npm run lint       # ESLint
 npm run format     # Prettier
 ```
@@ -129,18 +132,43 @@ src/
     └── stream.ts                     # SSE helpers
 ```
 
+## Security & Hardening
+
+- SQL queries use parameterized bindings (no string interpolation)
+- Message content capped at 500KB, conversation array capped at 100 messages
+- Bearer token parsing uses strict regex (`/^Bearer\s+(\S+)$/`)
+- CORS configurable via `PHAROS_CORS_ORIGINS` env var (comma-separated, defaults to open)
+- Rate limiting: 100 req/min per IP via `@fastify/rate-limit`
+- Provider request timeouts: 30s default (AbortController for OpenAI/Anthropic, native for Google)
+- Provider health cooldown: configurable (default 60s), tracked via consecutive error count
+- Classifier validates response scores (must be finite number 1-10, otherwise fallback)
+- Tier config validated: scoreRange min <= max, no overlapping ranges between tiers
+- Pricing table configurable via YAML (hardcoded defaults as fallback)
+- TrackingStore.close() is idempotent (safe for multiple shutdown paths)
+- Stream errors caught and SSE properly closed on failure
+
 ## Development Notes
 
 - Server listens on port 3777 by default
 - SQLite DB stored at `data/pharos.db` (gitignored)
-- Classifier has a 5s timeout; falls back to "economical" tier on failure
-- Provider health tracking: 3 consecutive errors → provider marked unhealthy for 60s
+- Classifier has a 5s timeout with AbortController; falls back to "economical" tier on failure
+- Fallback scores derived from tier config midpoints (not hardcoded)
+- Provider health tracking: 3 consecutive errors → provider marked unhealthy (configurable cooldown)
 - Streaming uses Server-Sent Events (SSE) matching OpenAI's format
 - Response headers include `X-Pharos-*` metadata (tier, model, score)
+- `presence_penalty` and `frequency_penalty` forwarded to providers
+
+## Testing
+
+- **Framework**: Vitest 4
+- **Test files**: `src/__tests__/*.test.ts`
+- **Coverage**: tier-resolver (23 tests), cost-calculator (20), auth middleware (9), ID generators (10), config schema (33)
+- **Total**: 95 tests, all passing
+- Run: `npm test` or `npm run test:watch`
 
 ## Roadmap Status
 
-- **Phase 1 (Core Engine)**: COMPLETE — routing, classification, multi-provider, failover, tracking
+- **Phase 1 (Core Engine)**: COMPLETE + HARDENED — routing, classification, multi-provider, failover, tracking, security, tests
 - **Phase 2 (Intelligence)**: NOT STARTED — semantic caching, conversation-aware routing, prompt caching
 - **Phase 3 (Dashboard)**: NOT STARTED — web UI, config UI, real-time feed
 - **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker, docs site

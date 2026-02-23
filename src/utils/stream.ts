@@ -16,9 +16,14 @@ export function sendSSEDone(reply: FastifyReply): void {
 }
 
 /**
- * Set up SSE headers on the response.
+ * Set up SSE headers on the response and hijack from Fastify.
+ *
+ * reply.hijack() tells Fastify we're taking over the response —
+ * without it, Fastify tries to send a response after the async handler
+ * returns, causing ERR_HTTP_HEADERS_SENT crashes.
  */
 export function initSSEHeaders(reply: FastifyReply): void {
+    reply.hijack();
     reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',

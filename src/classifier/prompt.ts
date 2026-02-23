@@ -25,10 +25,25 @@ Respond ONLY with JSON (no markdown, no explanation):
 {"score": N, "type": "..."}`;
 
 /**
+ * Extract text content from a message, handling both string and array formats.
+ */
+function extractTextContent(content: unknown): string {
+    if (content === null || content === undefined) return '';
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content
+            .filter((part: Record<string, unknown>) => part.type === 'text' && part.text)
+            .map((part: Record<string, unknown>) => part.text as string)
+            .join(' ');
+    }
+    return String(content);
+}
+
+/**
  * Build the full classification input from the messages array.
  */
 export function buildClassificationInput(
-    messages: Array<{ role: string; content: string }>,
+    messages: Array<{ role: string; content: unknown }>,
 ): string {
     // Include system messages for context awareness
     const relevant = messages.filter((m) => m.role === 'system' || m.role === 'user');
@@ -36,7 +51,7 @@ export function buildClassificationInput(
     // Take last 3 messages to keep classification fast
     const recent = relevant.slice(-3);
 
-    const parts = recent.map((m) => `[${m.role.toUpperCase()}]: ${m.content}`);
+    const parts = recent.map((m) => `[${m.role.toUpperCase()}]: ${extractTextContent(m.content)}`);
 
     return parts.join('\n\n');
 }

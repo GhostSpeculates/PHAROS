@@ -12,10 +12,11 @@ server:
 auth:
   apiKey: ""
 
-# The model used to classify query complexity (free tier)
+# The model used to classify query complexity
+# Supports any OpenAI-compatible provider (groq, xai, deepseek, openai, etc.)
 classifier:
-  provider: google
-  model: gemini-2.0-flash
+  provider: groq
+  model: llama-3.3-70b-versatile
   # Fallback tier if classifier fails (free | economical | premium | frontier)
   fallbackTier: economical
   # Max time to wait for classification (ms)
@@ -26,20 +27,22 @@ tiers:
   free:
     scoreRange: [1, 3]
     models:
-      - provider: google
-        model: gemini-2.0-flash
       - provider: groq
         model: llama-3.3-70b-versatile
+      - provider: google
+        model: gemini-2.5-flash
 
   economical:
     scoreRange: [4, 6]
     models:
       - provider: deepseek
         model: deepseek-chat
-      - provider: mistral
-        model: mistral-large-latest
       - provider: groq
         model: llama-3.3-70b-versatile
+      - provider: openai
+        model: gpt-4o
+      # - provider: mistral
+      #   model: mistral-large-latest
 
   premium:
     scoreRange: [7, 8]
@@ -48,18 +51,18 @@ tiers:
         model: claude-sonnet-4-20250514
       - provider: openai
         model: gpt-4o
-      - provider: google
-        model: gemini-2.5-pro
 
   frontier:
     scoreRange: [9, 10]
     models:
       - provider: anthropic
-        model: claude-opus-4-20250514
-      - provider: openai
-        model: o3
-      - provider: anthropic
         model: claude-sonnet-4-20250514
+      - provider: openai
+        model: gpt-4o
+      # Opus disabled for now — too slow on 30s timeout, expensive
+      # Re-enable when needed for truly frontier tasks
+      # - provider: anthropic
+      #   model: claude-opus-4-20250514
 
 # Provider configurations — API keys loaded from env vars
 providers:
@@ -91,15 +94,20 @@ providers:
     baseUrl: https://api.mistral.ai/v1
     timeoutMs: 30000
     healthCooldownMs: 60000
+  xai:
+    apiKeyEnv: XAI_API_KEY
+    baseUrl: https://api.x.ai/v1
+    timeoutMs: 30000
+    healthCooldownMs: 60000
 
 # Model pricing — cost per million tokens (input/output)
 # These override the hardcoded defaults in the cost calculator
 pricing:
   # ─── Free Tier ───
   - provider: google
-    model: gemini-2.0-flash
-    inputCostPerMillion: 0
-    outputCostPerMillion: 0
+    model: gemini-2.5-flash
+    inputCostPerMillion: 0.15
+    outputCostPerMillion: 0.60
   - provider: groq
     model: llama-3.3-70b-versatile
     inputCostPerMillion: 0.59
@@ -135,6 +143,11 @@ pricing:
     model: o3
     inputCostPerMillion: 10.0
     outputCostPerMillion: 40.0
+  # ─── Classifier ───
+  - provider: xai
+    model: grok-3-mini-fast
+    inputCostPerMillion: 0.30
+    outputCostPerMillion: 0.50
 
 # Cost tracking
 tracking:
