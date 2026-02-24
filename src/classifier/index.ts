@@ -90,7 +90,7 @@ export class QueryClassifier {
         }
 
         // Build truncated input once (shared across all provider attempts)
-        const userInput = buildClassificationInput(messages);
+        const userInput = buildClassificationInput(messages, this.logger);
 
         // Try each classifier provider in order
         for (const cp of this.classifierProviders) {

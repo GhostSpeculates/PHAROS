@@ -21,6 +21,8 @@ export interface RequestRecord {
     stream: boolean;
     isDirectRoute: boolean;
     userMessagePreview?: string;
+    status?: 'success' | 'error';
+    errorMessage?: string;
 }
 
 export interface CostSummary {
@@ -29,6 +31,8 @@ export interface CostSummary {
     totalBaselineCost: number;
     totalSavings: number;
     savingsPercent: number;
+    totalErrors: number;
+    errorRate: number;
     byTier: Record<string, { count: number; cost: number }>;
     byProvider: Record<string, { count: number; cost: number }>;
 }

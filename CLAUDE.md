@@ -209,7 +209,8 @@ src/
 
 ## Roadmap Status
 
-- **Phase 1 (Core Engine)**: COMPLETE + HARDENED + CLASSIFIER FAILOVER
+- **Phase 1 (Core Engine)**: IN PROGRESS — core built, needs continued hardening
+  - ⚠️ Phase 1 is NOT complete. Do NOT start Phase 2 features until Phase 1 is declared done.
   - Routing, classification, multi-provider (8), failover, tracking, security, tests
   - Classifier failover chain (Groq → Kimi → xAI → fallback)
   - Input truncation to prevent classifier context limit failures
@@ -219,6 +220,7 @@ src/
   - Unknown model pricing warns once per model
   - CORS origin parsing trims whitespace
   - 370 tests passing
+  - Still needs: continued stability testing, edge case hardening, professional polish
 - **Phase 2 (Intelligence)**: NOT STARTED — semantic caching, conversation-aware routing, prompt caching
 - **Phase 3 (Dashboard)**: NOT STARTED — web UI (React SPA), config UI, real-time feed
 - **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker, docs site

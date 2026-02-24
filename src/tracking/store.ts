@@ -16,7 +16,7 @@ export class TrackingStore {
     private logger: Logger;
     private closed = false;
 
-    constructor(dbPath: string, logger: Logger) {
+    constructor(dbPath: string, logger: Logger, retentionDays: number = 30) {
         this.logger = logger;
 
         // Ensure directory exists
@@ -65,9 +65,16 @@ export class TrackingStore {
         if (!columnNames.has('classifier_provider')) {
             this.db.exec("ALTER TABLE requests ADD COLUMN classifier_provider TEXT DEFAULT 'unknown'");
         }
+        if (!columnNames.has('status')) {
+            this.db.exec("ALTER TABLE requests ADD COLUMN status TEXT DEFAULT 'success'");
+        }
+        if (!columnNames.has('error_message')) {
+            this.db.exec('ALTER TABLE requests ADD COLUMN error_message TEXT');
+        }
 
         // Index on classifier_provider — must run after migration adds the column
         this.db.exec('CREATE INDEX IF NOT EXISTS idx_requests_classifier_provider ON requests(classifier_provider)');
+        this.db.exec('CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status)');
 
         this.insertStmt = this.db.prepare(`
       INSERT INTO requests (
@@ -75,18 +82,20 @@ export class TrackingStore {
         classification_score, classification_type, classification_latency_ms,
         classifier_provider,
         tokens_in, tokens_out, estimated_cost, baseline_cost, savings,
-        total_latency_ms, stream, is_direct_route, user_message_preview
+        total_latency_ms, stream, is_direct_route, user_message_preview,
+        status, error_message
       ) VALUES (
         @id, @timestamp, @tier, @provider, @model,
         @classificationScore, @classificationType, @classificationLatencyMs,
         @classifierProvider,
         @tokensIn, @tokensOut, @estimatedCost, @baselineCost, @savings,
-        @totalLatencyMs, @stream, @isDirectRoute, @userMessagePreview
+        @totalLatencyMs, @stream, @isDirectRoute, @userMessagePreview,
+        @status, @errorMessage
       )
     `);
 
-        // Clean up entries older than 30 days on startup
-        this.purgeOldRecords(30);
+        // Clean up entries older than the retention period on startup
+        this.purgeOldRecords(retentionDays);
 
         this.logger.debug({ dbPath }, 'Tracking store initialized');
     }
@@ -122,6 +131,8 @@ export class TrackingStore {
                 stream: record.stream ? 1 : 0,
                 isDirectRoute: record.isDirectRoute ? 1 : 0,
                 userMessagePreview: record.userMessagePreview ?? null,
+                status: record.status ?? 'success',
+                errorMessage: record.errorMessage ?? null,
             });
         } catch (error) {
             this.logger.error({ error }, 'Failed to record request');
@@ -141,7 +152,8 @@ export class TrackingStore {
           COUNT(*) as total_requests,
           COALESCE(SUM(estimated_cost), 0) as total_cost,
           COALESCE(SUM(baseline_cost), 0) as total_baseline_cost,
-          COALESCE(SUM(savings), 0) as total_savings
+          COALESCE(SUM(savings), 0) as total_savings,
+          COALESCE(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), 0) as total_errors
         FROM requests ${whereClause}`,
             )
             .get(...params) as Record<string, number>;
@@ -164,13 +176,17 @@ export class TrackingStore {
 
         const totalCost = totals.total_cost;
         const totalBaselineCost = totals.total_baseline_cost;
+        const totalErrors = totals.total_errors;
+        const totalRequests = totals.total_requests;
 
         return {
-            totalRequests: totals.total_requests,
+            totalRequests,
             totalCost,
             totalBaselineCost,
             totalSavings: totals.total_savings,
             savingsPercent: totalBaselineCost > 0 ? ((totalBaselineCost - totalCost) / totalBaselineCost) * 100 : 0,
+            totalErrors,
+            errorRate: totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0,
             byTier: Object.fromEntries(byTier.map((r) => [r.tier, { count: r.count, cost: r.cost }])),
             byProvider: Object.fromEntries(
                 byProvider.map((r) => [r.provider, { count: r.count, cost: r.cost }]),
@@ -194,13 +210,16 @@ export class TrackingStore {
         latencyMs: number;
         stream: boolean;
         classifierProvider: string;
+        status: string;
+        errorMessage: string | null;
     }> {
         const rows = this.db
             .prepare(
                 `SELECT
                     timestamp, user_message_preview, classification_score, classification_type,
                     tier, provider, model, tokens_in + tokens_out as tokens,
-                    estimated_cost, total_latency_ms, stream, classifier_provider
+                    estimated_cost, total_latency_ms, stream, classifier_provider,
+                    status, error_message
                 FROM requests
                 ORDER BY timestamp DESC
                 LIMIT ?`,
@@ -220,6 +239,8 @@ export class TrackingStore {
             latencyMs: r.total_latency_ms,
             stream: !!r.stream,
             classifierProvider: r.classifier_provider ?? 'unknown',
+            status: r.status ?? 'success',
+            errorMessage: r.error_message ?? null,
         }));
     }
 

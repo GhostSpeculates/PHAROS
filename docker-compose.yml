@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  pharos:
+    build: .
+    ports:
+      - "3777:3777"
+    env_file:
+      - .env
+    environment:
+      # Override host binding for Docker (default config uses 127.0.0.1)
+      PHAROS_HOST: "0.0.0.0"
+    volumes:
+      - ./config:/app/config
+      - pharos-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  pharos-data:

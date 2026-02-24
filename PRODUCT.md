@@ -48,7 +48,7 @@ Pharos eliminates this tradeoff with real-time intelligent routing.
 - Context-size-aware provider health (oversized errors don't damage health scores)
 
 ### Layer 4: Provider Pool
-- 6 active providers: Anthropic, Google, OpenAI, DeepSeek, Groq, xAI
+- 8 configured providers: Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot
 - Per-provider health monitoring (consecutive errors, cooldown recovery)
 - Rolling latency tracking (50-sample window, baseline degradation alerts)
 - Dynamic cost tracking per provider
@@ -103,9 +103,9 @@ tiers:
 
 ## Development Roadmap
 
-### Phase 1: Core Engine — COMPLETE, BATTLE-TESTED
+### Phase 1: Core Engine — IN PROGRESS
 
-**Status: Deployed to production, routing live traffic from OpenClaw/Noir agents on Discord.**
+**Status: Deployed to production, routing live traffic from OpenClaw/Noir agents on Discord. Core infrastructure built — needs continued hardening and professional polish before Phase 1 can be declared complete. Do NOT start Phase 2 until Phase 1 is done.**
 
 - [x] Project scaffolding (Node.js/TypeScript, Fastify)
 - [x] OpenAI-compatible API server with streaming support

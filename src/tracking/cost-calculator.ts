@@ -9,6 +9,8 @@
  * via initPricing().
  */
 
+import type { Logger } from '../utils/logger.js';
+
 export interface PricingEntry {
     provider: string;
     model: string;
@@ -21,6 +23,9 @@ interface ModelPricing {
     outputPerMillion: number;
 }
 
+/** Module-level logger — set via initPricing() at startup. */
+let pricingLogger: Logger | null = null;
+
 // Hardcoded defaults — used as fallback when config doesn't specify pricing
 const PRICING_DEFAULTS: Record<string, ModelPricing> = {
     // ─── Free Tier ───
@@ -31,7 +36,7 @@ const PRICING_DEFAULTS: Record<string, ModelPricing> = {
     // ─── Economical Tier ───
     'deepseek/deepseek-chat': { inputPerMillion: 0.14, outputPerMillion: 0.28 },
     'mistral/mistral-large-latest': { inputPerMillion: 2.0, outputPerMillion: 6.0 },
-    'moonshot/kimi-k2': { inputPerMillion: 0.6, outputPerMillion: 2.0 },
+    'moonshot/kimi-k2': { inputPerMillion: 0.5, outputPerMillion: 2.5 },
     'xai/grok-3-mini-fast': { inputPerMillion: 0.3, outputPerMillion: 0.5 },
 
     // ─── Premium Tier ───
@@ -55,7 +60,10 @@ const warnedModels = new Set<string>();
  * Config entries take precedence over hardcoded defaults.
  * Call this once at startup after loading config.
  */
-export function initPricing(configPricing?: PricingEntry[]): void {
+export function initPricing(configPricing?: PricingEntry[], logger?: Logger): void {
+    if (logger) {
+        pricingLogger = logger;
+    }
     // Reset to defaults first
     PRICING = { ...PRICING_DEFAULTS };
 
@@ -89,9 +97,9 @@ export function calculateCost(
         // Unknown model — assume moderate pricing, warn once
         if (!warnedModels.has(key)) {
             warnedModels.add(key);
-            // Using console.warn here since this module doesn't have a logger instance.
-            // The warning is important: $1/$3 fallback is wrong for frontier models ($15/$75).
-            console.warn(`[pharos] Unknown model pricing for "${key}" — using $1/$3 per million fallback`);
+            if (pricingLogger) {
+                pricingLogger.warn({ model: key }, 'Unknown model pricing — using $1/$3 per million fallback');
+            }
         }
         return ((tokensIn * 1.0) / 1_000_000) + ((tokensOut * 3.0) / 1_000_000);
     }

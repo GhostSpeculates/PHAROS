@@ -14,6 +14,7 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
     'gpt-4o': 128_000,
     'gpt-4o-mini': 128_000,
     'o3': 200_000,
+    'o3-mini': 200_000,
     // Google
     'gemini-2.5-flash': 1_048_576,
     'gemini-2.5-pro': 1_048_576,

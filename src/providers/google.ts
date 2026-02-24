@@ -128,6 +128,26 @@ export class GoogleProvider extends LLMProvider {
     }
 
     /**
+     * Extract text from string or array content.
+     * Array content (multimodal) is collapsed to text parts + [image] placeholders.
+     */
+    private extractText(content: ChatRequest['messages'][number]['content']): string {
+        if (content === null || content === undefined) return '';
+        if (typeof content === 'string') return content;
+        if (Array.isArray(content)) {
+            return content
+                .map((part: any) => {
+                    if (part.type === 'text' && part.text) return part.text;
+                    if (part.type === 'image_url') return '[image]';
+                    return '';
+                })
+                .filter(Boolean)
+                .join(' ');
+        }
+        return String(content);
+    }
+
+    /**
      * Convert OpenAI-format messages to Google Gemini format.
      */
     private convertMessages(messages: ChatRequest['messages']): {
@@ -139,9 +159,11 @@ export class GoogleProvider extends LLMProvider {
 
         for (const msg of messages) {
             if (msg.role === 'system') {
-                systemInstruction = (systemInstruction ? systemInstruction + '\n\n' : '') + msg.content;
+                const text = this.extractText(msg.content);
+                systemInstruction = (systemInstruction ? systemInstruction + '\n\n' : '') + text;
             } else {
-                parts.push(`${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`);
+                const text = this.extractText(msg.content);
+                parts.push(`${msg.role === 'user' ? 'User' : 'Assistant'}: ${text}`);
             }
         }
 

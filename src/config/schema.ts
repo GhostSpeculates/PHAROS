@@ -75,12 +75,20 @@ export const TrackingConfigSchema = z.object({
     baselineModel: z.string().default('claude-sonnet-4-20250514'),
     baselineCostPerMillionInput: z.number().default(3.0),
     baselineCostPerMillionOutput: z.number().default(15.0),
+    retentionDays: z.number().int().positive().default(30),
 });
 
 // ─── Server configuration ───
 export const ServerConfigSchema = z.object({
     port: z.number().int().positive().default(3777),
     host: z.string().default('0.0.0.0'),
+    bodyLimitMb: z.number().positive().default(10),
+    rateLimitPerMinute: z.number().int().positive().default(100),
+});
+
+// ─── Router configuration ───
+export const RouterConfigSchema = z.object({
+    oversizedThresholdTokens: z.number().int().positive().default(100_000),
 });
 
 // ─── Auth configuration ───
@@ -98,6 +106,7 @@ export const LoggingConfigSchema = z.object({
 export const PharosConfigSchema = z.object({
     server: ServerConfigSchema.default({}),
     auth: AuthConfigSchema.default({}),
+    router: RouterConfigSchema.default({}),
     classifier: ClassifierConfigSchema.default({}),
     tiers: z
         .object({
