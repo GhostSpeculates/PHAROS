@@ -6,11 +6,20 @@
 server:
   port: 3777
   host: "127.0.0.1"
+  # Max request body size in megabytes
+  bodyLimitMb: 10
+  # Max requests per minute per IP (rate limiting)
+  rateLimitPerMinute: 100
 
 # Your Pharos API key — clients must send this to authenticate
 # Can also be set via PHAROS_API_KEY env var
 auth:
   apiKey: ""
+
+# Router settings
+router:
+  # Token count above which pre-flight context window filtering kicks in
+  oversizedThresholdTokens: 100000
 
 # The model used to classify query complexity
 # Supports any OpenAI-compatible provider (groq, xai, deepseek, openai, etc.)
@@ -173,6 +182,8 @@ tracking:
   baselineModel: claude-sonnet-4-20250514
   baselineCostPerMillionInput: 3.0
   baselineCostPerMillionOutput: 15.0
+  # Purge tracking records older than this many days on startup
+  retentionDays: 30
 
 logging:
   level: info

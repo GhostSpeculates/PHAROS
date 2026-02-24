@@ -9,6 +9,7 @@ import { TrackingStore } from './tracking/store.js';
 import { registerRoutes } from './gateway/router.js';
 import { createErrorHandler } from './gateway/middleware/error-handler.js';
 import { createLogger, type Logger } from './utils/logger.js';
+import { initPricing } from './tracking/cost-calculator.js';
 
 /**
  * Create and configure the Pharos server.
@@ -27,6 +28,9 @@ export async function createServer(config: PharosConfig): Promise<{
     logger.info('⚡ Pharos — Intelligent LLM Routing Gateway');
     logger.info('────────────────────────────────────────────');
 
+    // ─── Initialize Pricing ───
+    initPricing(config.pricing, logger);
+
     // ─── Initialize Providers ───
     const registry = new ProviderRegistry(config, logger);
     const availableProviders = registry.listAvailable();
@@ -41,28 +45,29 @@ export async function createServer(config: PharosConfig): Promise<{
     // ─── Initialize Tracking ───
     let tracker: TrackingStore | null = null;
     if (config.tracking.enabled) {
-        tracker = new TrackingStore(config.tracking.dbPath, logger);
+        tracker = new TrackingStore(config.tracking.dbPath, logger, config.tracking.retentionDays);
         logger.info(`Cost tracking: enabled (${config.tracking.dbPath})`);
     }
 
     // ─── Create Fastify Server ───
     const app = Fastify({
         logger: false, // We use our own pino logger
-        bodyLimit: 10 * 1024 * 1024, // 10MB max request body
+        bodyLimit: config.server.bodyLimitMb * 1024 * 1024,
     });
 
     // Register CORS — configurable via PHAROS_CORS_ORIGINS env var (comma-separated)
+    // Defaults to common dev ports when not set (secure by default)
     const corsOrigins = process.env.PHAROS_CORS_ORIGINS
         ? process.env.PHAROS_CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
-        : true;
+        : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000'];
     await app.register(cors, {
         origin: corsOrigins,
         methods: ['GET', 'POST', 'OPTIONS'],
     });
 
-    // Register rate limiting — 100 requests per minute per IP
+    // Register rate limiting — configurable requests per minute per IP
     await app.register(rateLimit, {
-        max: 100,
+        max: config.server.rateLimitPerMinute,
         timeWindow: '1 minute',
     });
 

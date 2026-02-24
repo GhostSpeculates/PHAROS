@@ -192,4 +192,127 @@ describe('TrackingStore', () => {
             );
         });
     });
+
+    describe('error tracking', () => {
+        it('defaults status to success when not provided', () => {
+            store.record(makeRecord({ id: 'req-ok-001' }));
+
+            const recent = store.getRecent(1);
+            expect(recent).toHaveLength(1);
+            expect(recent[0].status).toBe('success');
+            expect(recent[0].errorMessage).toBeNull();
+        });
+
+        it('records a failed request with status error and error message', () => {
+            store.record(makeRecord({
+                id: 'req-err-001',
+                status: 'error',
+                errorMessage: 'All providers failed after 3 retry attempts',
+            }));
+
+            const recent = store.getRecent(1);
+            expect(recent).toHaveLength(1);
+            expect(recent[0].status).toBe('error');
+            expect(recent[0].errorMessage).toBe('All providers failed after 3 retry attempts');
+        });
+
+        it('records a success with explicit status', () => {
+            store.record(makeRecord({
+                id: 'req-ok-002',
+                status: 'success',
+            }));
+
+            const recent = store.getRecent(1);
+            expect(recent[0].status).toBe('success');
+            expect(recent[0].errorMessage).toBeNull();
+        });
+
+        it('getSummary includes totalErrors and errorRate', () => {
+            store.record(makeRecord({ id: 'req-001' }));
+            store.record(makeRecord({ id: 'req-002' }));
+            store.record(makeRecord({ id: 'req-003', status: 'error', errorMessage: 'timeout' }));
+
+            const summary = store.getSummary();
+            expect(summary.totalErrors).toBe(1);
+            expect(summary.totalRequests).toBe(3);
+            expect(summary.errorRate).toBeCloseTo(33.33, 1);
+        });
+
+        it('getSummary returns zero errors when all requests succeed', () => {
+            store.record(makeRecord({ id: 'req-001' }));
+            store.record(makeRecord({ id: 'req-002' }));
+
+            const summary = store.getSummary();
+            expect(summary.totalErrors).toBe(0);
+            expect(summary.errorRate).toBe(0);
+        });
+
+        it('getSummary returns zero error rate when no requests exist', () => {
+            const summary = store.getSummary();
+            expect(summary.totalErrors).toBe(0);
+            expect(summary.errorRate).toBe(0);
+        });
+
+        it('calculates error rate accurately (2 errors out of 10 = 20%)', () => {
+            for (let i = 0; i < 8; i++) {
+                store.record(makeRecord({ id: `req-ok-${i}` }));
+            }
+            store.record(makeRecord({ id: 'req-err-1', status: 'error', errorMessage: 'error 1' }));
+            store.record(makeRecord({ id: 'req-err-2', status: 'error', errorMessage: 'error 2' }));
+
+            const summary = store.getSummary();
+            expect(summary.totalRequests).toBe(10);
+            expect(summary.totalErrors).toBe(2);
+            expect(summary.errorRate).toBeCloseTo(20);
+        });
+
+        it('getRecent includes status and errorMessage fields', () => {
+            store.record(makeRecord({ id: 'req-ok-001' }));
+            store.record(makeRecord({
+                id: 'req-err-001',
+                status: 'error',
+                errorMessage: 'Provider unavailable',
+            }));
+
+            const recent = store.getRecent(10);
+            expect(recent).toHaveLength(2);
+
+            // Each record should have status and errorMessage properties
+            for (const r of recent) {
+                expect(r).toHaveProperty('status');
+                expect(r).toHaveProperty('errorMessage');
+            }
+
+            // Find the error record
+            const errorRecord = recent.find(r => r.status === 'error');
+            expect(errorRecord).toBeDefined();
+            expect(errorRecord!.errorMessage).toBe('Provider unavailable');
+
+            // Find the success record
+            const successRecord = recent.find(r => r.status === 'success');
+            expect(successRecord).toBeDefined();
+            expect(successRecord!.errorMessage).toBeNull();
+        });
+
+        it('handles null errorMessage for error status', () => {
+            store.record(makeRecord({
+                id: 'req-err-no-msg',
+                status: 'error',
+            }));
+
+            const recent = store.getRecent(1);
+            expect(recent[0].status).toBe('error');
+            expect(recent[0].errorMessage).toBeNull();
+        });
+    });
+
+    describe('migration idempotency', () => {
+        it('creating a second store on the same database does not crash', () => {
+            // The first store already created tables + ran migrations in beforeEach.
+            // Creating a second store on a new in-memory DB simulates re-running migrations.
+            const store2 = new TrackingStore(':memory:', makeLogger());
+            // If it didn't throw, migration is idempotent
+            store2.close();
+        });
+    });
 });

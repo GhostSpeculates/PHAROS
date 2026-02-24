@@ -3,6 +3,8 @@
  * This runs on a lightweight classifier model for every incoming request.
  */
 
+import type { Logger } from '../utils/logger.js';
+
 export const CLASSIFICATION_PROMPT = `You are a query complexity classifier for an AI routing system. Your job is to score how powerful an AI model is needed to answer the user's message well.
 
 SCORING GUIDE (1-10):
@@ -92,13 +94,16 @@ function truncate(text: string, maxLen: number): string {
  */
 export function buildClassificationInput(
     messages: Array<{ role: string; content: unknown }>,
+    logger?: Logger,
 ): string {
     const parts: string[] = [];
+    let truncated = false;
 
     // Include first system message (truncated)
     const systemMsg = messages.find((m) => m.role === 'system');
     if (systemMsg) {
         const text = extractTextContent(systemMsg.content);
+        if (text.length > MAX_PER_MESSAGE) truncated = true;
         parts.push(`[SYSTEM]: ${truncate(text, MAX_PER_MESSAGE)}`);
     }
 
@@ -107,6 +112,7 @@ export function buildClassificationInput(
     const recentUsers = userMsgs.slice(-3);
     for (const msg of recentUsers) {
         const text = extractTextContent(msg.content);
+        if (text.length > MAX_PER_MESSAGE) truncated = true;
         parts.push(`[USER]: ${truncate(text, MAX_PER_MESSAGE)}`);
     }
 
@@ -114,7 +120,23 @@ export function buildClassificationInput(
 
     // Final safety cap
     if (combined.length > MAX_TOTAL) {
-        return combined.slice(0, MAX_TOTAL) + '\n[...truncated]';
+        truncated = true;
+        const result = combined.slice(0, MAX_TOTAL) + '\n[...truncated]';
+        if (logger && truncated) {
+            logger.debug(
+                { originalLength: combined.length, maxTotal: MAX_TOTAL },
+                'Classifier input truncated (total cap exceeded)',
+            );
+        }
+        return result;
     }
+
+    if (logger && truncated) {
+        logger.debug(
+            { messageCount: messages.length, maxPerMessage: MAX_PER_MESSAGE },
+            'Classifier input truncated (individual message cap exceeded)',
+        );
+    }
+
     return combined;
 }

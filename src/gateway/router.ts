@@ -54,6 +54,9 @@ export function registerRoutes(
         const totalCost = stats?.totalCost ?? 0;
         const totalSavings = stats?.totalSavings ?? 0;
         const savingsPct = stats?.savingsPercent ?? 0;
+        const totalErrors = stats?.totalErrors ?? 0;
+        const errorRate = stats?.errorRate ?? 0;
+        const errorRateColor = errorRate < 1 ? '#22c55e' : errorRate <= 5 ? '#eab308' : '#ef4444';
 
         const tierRows = stats?.byTier
             ? Object.entries(stats.byTier)
@@ -73,8 +76,12 @@ export function registerRoutes(
                 const preview = r.preview
                     ? r.preview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                     : '<span style="color:#525252">—</span>';
+                const statusIcon = r.status === 'error'
+                    ? '<span style="color:#ef4444" title="' + (r.errorMessage ?? '').replace(/"/g, '&quot;') + '">&#10007;</span>'
+                    : '<span style="color:#22c55e">&#10003;</span>';
                 return `<tr>
 <td style="white-space:nowrap">${time}</td>
+<td>${statusIcon}</td>
 <td class="preview-cell" title="${r.preview ?? ''}">${preview}</td>
 <td>${r.score}</td>
 <td>${r.type}</td>
@@ -87,7 +94,7 @@ export function registerRoutes(
 <td>${r.latencyMs.toLocaleString()}ms</td>
 </tr>`;
             }).join('')
-            : '<tr><td colspan="11" style="text-align:center;color:#525252">No requests yet</td></tr>';
+            : '<tr><td colspan="12" style="text-align:center;color:#525252">No requests yet</td></tr>';
 
         const html = `<!DOCTYPE html>
 <html lang="en">
@@ -137,10 +144,11 @@ a:hover{text-decoration:underline}
 
 <div class="card">
 <h2>Usage</h2>
-<div class="stats">
+<div class="stats" style="grid-template-columns:repeat(4,1fr)">
 <div><div class="stat-value">${totalReqs}</div><div class="stat-label">Requests</div></div>
 <div><div class="stat-value">$${totalCost.toFixed(4)}</div><div class="stat-label">Total Cost</div></div>
 <div class="savings"><div class="stat-value">${savingsPct.toFixed(1)}%</div><div class="stat-label">Savings</div></div>
+<div><div class="stat-value" style="color:${errorRateColor}">${totalErrors}<span style="font-size:.75rem;color:#737373"> (${errorRate.toFixed(1)}%)</span></div><div class="stat-label">Errors</div></div>
 </div>
 </div>
 </div>
@@ -182,7 +190,7 @@ ${Object.entries(status).map(([name, info]: [string, any]) => {
 <h2>Recent Requests <span class="refresh" id="countdown">refreshing in 30s</span></h2>
 <div class="recent-table">
 <table>
-<tr><th>Time</th><th>Message</th><th>Score</th><th>Type</th><th>Tier</th><th>Provider</th><th>Model</th><th>Classifier</th><th>Tokens</th><th>Cost</th><th>Latency</th></tr>
+<tr><th>Time</th><th></th><th>Message</th><th>Score</th><th>Type</th><th>Tier</th><th>Provider</th><th>Model</th><th>Classifier</th><th>Tokens</th><th>Cost</th><th>Latency</th></tr>
 ${recentRows}
 </table>
 </div>
@@ -262,12 +270,26 @@ ${recentRows}
 
         logger.info({ requestId, model: body.model, messageCount: messages.length }, 'Request received');
 
+        // Extract truncated last user message for audit logging (used by both success and error paths)
+        const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+        const msgPreview = lastUserMsg
+            ? (typeof lastUserMsg.content === 'string'
+                ? lastUserMsg.content
+                : Array.isArray(lastUserMsg.content)
+                    ? lastUserMsg.content.filter((p: any) => p.type === 'text').map((p: any) => p.text).join(' ')
+                    : String(lastUserMsg.content ?? ''))
+            : '';
+        const userMessagePreview = msgPreview.slice(0, 80);
+
+        // Track classification + routing for error reporting (hoisted for catch block access)
+        let classification: Awaited<ReturnType<typeof classifier.classify>> | undefined;
+        let routing: RoutingDecision | undefined;
+
         try {
             // 2. Classify the query
-            const classification = await classifier.classify(messages);
+            classification = await classifier.classify(messages);
 
             // 3. Determine routing
-            let routing: RoutingDecision;
             const directModel = router.resolveDirectModel(body.model);
 
             if (directModel) {
@@ -314,17 +336,6 @@ ${recentRows}
                 ...(body.thinking !== undefined && { thinking: body.thinking }),
             };
 
-            // Extract truncated last user message for audit logging
-            const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
-            const msgPreview = lastUserMsg
-                ? (typeof lastUserMsg.content === 'string'
-                    ? lastUserMsg.content
-                    : Array.isArray(lastUserMsg.content)
-                        ? lastUserMsg.content.filter((p: any) => p.type === 'text').map((p: any) => p.text).join(' ')
-                        : String(lastUserMsg.content ?? ''))
-                : '';
-            const userMessagePreview = msgPreview.slice(0, 80);
-
             // Build candidate list: direct routes get a single candidate, auto routes get full retry chain
             const candidates = directModel
                 ? [{ provider: routing.provider, model: routing.model, tier: routing.tier }]
@@ -338,7 +349,7 @@ ${recentRows}
             const estimatedTokens = estimateTokens(messages);
             let filteredCandidates = candidates;
 
-            if (estimatedTokens > 100_000) {
+            if (estimatedTokens > config.router.oversizedThresholdTokens) {
                 filteredCandidates = candidates.filter(c => getContextWindow(c.model) > estimatedTokens);
                 const skipped = candidates.length - filteredCandidates.length;
 
@@ -607,6 +618,16 @@ ${recentRows}
             const errMsg = error instanceof Error ? error.message : 'Unknown error';
             logger.error({ requestId, error: errMsg }, '✗ Request failed');
 
+            // Track the failed request if we have enough context
+            if (classification && routing) {
+                trackRequest(
+                    tracker, config, requestId, routing, classification,
+                    { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+                    Date.now() - requestStartTime, body.stream ?? false, userMessagePreview,
+                    { status: 'error', errorMessage: errMsg },
+                );
+            }
+
             // If reply was already hijacked (streaming started), write error to raw stream
             if (reply.raw.headersSent) {
                 // Only attempt to write if client is still connected
@@ -662,6 +683,7 @@ function trackRequest(
     totalLatencyMs: number,
     stream: boolean,
     userMessagePreview: string,
+    errorInfo?: { status: 'error'; errorMessage: string },
 ): void {
     if (!tracker) return;
 
@@ -692,5 +714,6 @@ function trackRequest(
         stream,
         isDirectRoute: routing.isDirectRoute,
         userMessagePreview,
+        ...(errorInfo && { status: errorInfo.status, errorMessage: errorInfo.errorMessage }),
     });
 }

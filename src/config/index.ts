@@ -58,6 +58,11 @@ function applyEnvOverrides(config: Record<string, unknown>): void {
         (config.server as Record<string, unknown>).port = parseInt(process.env.PHAROS_PORT, 10);
     }
 
+    if (process.env.PHAROS_HOST) {
+        ensureNested(config, 'server');
+        (config.server as Record<string, unknown>).host = process.env.PHAROS_HOST;
+    }
+
     if (process.env.PHAROS_API_KEY) {
         ensureNested(config, 'auth');
         (config.auth as Record<string, unknown>).apiKey = process.env.PHAROS_API_KEY;
