@@ -3,6 +3,22 @@ import { LLMProvider } from './base.js';
 import type { ChatRequest, ChatResponse, ChatStreamChunk, ThinkingConfig } from './types.js';
 import type { Logger } from '../utils/logger.js';
 
+/**
+ * Map Anthropic-native stop reasons to OpenAI finish_reason format.
+ * Pharos must return OpenAI-compatible responses regardless of backend provider.
+ */
+const STOP_REASON_MAP: Record<string, string> = {
+    end_turn: 'stop',
+    max_tokens: 'length',
+    stop_sequence: 'stop',
+    tool_use: 'tool_calls',
+};
+
+function normalizeStopReason(reason: string | null | undefined): string {
+    if (!reason) return 'stop';
+    return STOP_REASON_MAP[reason] ?? 'stop';
+}
+
 /** Budget token presets for shorthand thinking values. */
 const THINKING_BUDGETS: Record<string, number> = {
     low: 2048,
@@ -104,7 +120,7 @@ export class AnthropicProvider extends LLMProvider {
                     completionTokens: response.usage.output_tokens,
                     totalTokens: response.usage.input_tokens + response.usage.output_tokens,
                 },
-                finishReason: response.stop_reason ?? 'stop',
+                finishReason: normalizeStopReason(response.stop_reason),
             };
         } catch (error) {
             if (abort.signal.aborted) {
@@ -163,7 +179,7 @@ export class AnthropicProvider extends LLMProvider {
 
             yield {
                 content: '',
-                finishReason: finalMessage.stop_reason ?? 'stop',
+                finishReason: normalizeStopReason(finalMessage.stop_reason),
                 model: finalMessage.model,
                 usage: {
                     promptTokens: finalMessage.usage.input_tokens,
