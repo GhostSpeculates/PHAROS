@@ -16,7 +16,7 @@ HTTP Request → Auth Middleware → Zod Validation → Classifier (failover cha
 
 The classifier tries providers in order before falling back to a static tier score:
 1. **Groq** / llama-3.3-70b-versatile (fast, cheap)
-2. **Moonshot** / kimi-k2 (cheap, good quality)
+2. **Moonshot** / kimi-latest (cheap, good quality)
 3. **xAI** / grok-3-mini-fast (fast fallback)
 4. **Static fallback** → premium tier midpoint score
 
@@ -46,7 +46,7 @@ Backward-compatible with legacy single `provider`/`model` format.
 ### Tier Routing (default config)
 
 - **Free** (score 1-3): Groq Llama 3.3, Gemini Flash
-- **Economical** (score 4-6): Groq Llama 3.3, Kimi K2, DeepSeek, GPT-4o
+- **Economical** (score 4-6): Groq Llama 3.3, Kimi Latest, DeepSeek, GPT-4o
 - **Premium** (score 7-8): Claude Sonnet, GPT-4o
 - **Frontier** (score 9-10): Claude Opus, Claude Sonnet (fallback), GPT-4o
 
@@ -164,15 +164,17 @@ src/
     ├── logger.ts                     # Pino logger factory
     ├── id.ts                         # nanoid generators
     ├── context.ts                    # Context window sizes + token estimation
-    └── stream.ts                     # SSE helpers
+    ├── stream.ts                     # SSE helpers
+    ├── alerts.ts                     # Discord webhook alerts (singleton)
+    └── self-test.ts                  # Startup provider self-test
 ```
 
 ## Security & Hardening
 
 - SQL queries use parameterized bindings (no string interpolation)
-- Message content capped at 500KB, conversation array capped at 100 messages
+- Message content capped at 500KB, conversation array capped at 500 messages
 - Bearer token parsing uses strict regex (`/^Bearer\s+(\S+)$/`)
-- CORS configurable via `PHAROS_CORS_ORIGINS` env var (comma-separated, defaults to open)
+- CORS configurable via `PHAROS_CORS_ORIGINS` env var (comma-separated, defaults to localhost dev ports)
 - Rate limiting: 100 req/min per IP via `@fastify/rate-limit`
 - Provider request timeouts: 30s default (AbortController for OpenAI/Anthropic, native for Google)
 - Provider health cooldown: configurable (default 60s), tracked via consecutive error count
@@ -188,7 +190,7 @@ src/
 
 - Server listens on port 3777 by default
 - SQLite DB stored at `data/pharos.db` (gitignored), auto-migrates new columns
-- Classifier failover chain: Groq → Kimi → xAI → static fallback score
+- Classifier failover chain: Groq → Moonshot (kimi-latest) → xAI → static fallback score
 - Fallback scores derived from tier config midpoints (not hardcoded)
 - Provider health tracking: 3 consecutive errors → provider marked unhealthy (configurable cooldown)
 - Context-size errors don't damage provider health (undoLastError)
@@ -203,31 +205,40 @@ src/
 
 - **Framework**: Vitest 4
 - **Test files**: `src/__tests__/*.test.ts`
-- **Coverage**: tier-resolver (23), cost-calculator (20), auth middleware (9), ID generators (10), config schema (38), classifier (11), failover (15), tracking-store (13), router (15), context (21), stream (10)
-- **Total**: 370 tests, all passing (185 src + 185 dist)
+- **Coverage**: tier-resolver (23), cost-calculator (20), auth middleware (9), ID generators (10), config schema (38), classifier (11), failover (15), tracking-store (23), router (15), context (21), stream (10), providers (118), alerts (15), self-test (15)
+- **Total**: 686 tests, all passing (343 src + 343 dist)
 - Run: `npm test` or `npm run test:watch`
+
+## Alerts & Monitoring
+
+- Discord webhook alerts via `src/utils/alerts.ts` (singleton pattern)
+- Configured via `PHAROS_DISCORD_WEBHOOK_URL` env var or `alerts.discordWebhookUrl` in YAML
+- Severity levels: info (green), warning (yellow), critical (red)
+- 5-minute cooldown per alert key to prevent spam
+- Triggers: startup/shutdown, provider unhealthy (3 errors), classifier failover, all providers unavailable
+- Startup self-test (`src/utils/self-test.ts`): sends tiny request to each provider, logs pass/fail
+- Self-test configurable via `server.selfTest` (default: true), skipped in test environment
 
 ## Roadmap Status
 
-- **Phase 1 (Core Engine)**: IN PROGRESS — core built, needs continued hardening
-  - ⚠️ Phase 1 is NOT complete. Do NOT start Phase 2 features until Phase 1 is declared done.
-  - Routing, classification, multi-provider (8), failover, tracking, security, tests
+- **Phase 1 (Core Engine)**: IN PROGRESS — core built and deployed, needs continued hardening
+  - ⚠️ Phase 1 is NOT complete. Do NOT start Phase 2 features until Ghost declares Phase 1 done.
+  - ⚠️ Do NOT change this status line. Only the project owner (Ghost) can declare Phase 1 complete.
+  - Routing, classification, multi-provider (8), failover, tracking, security, 686 tests
   - Classifier failover chain (Groq → Kimi → xAI → fallback)
-  - Input truncation to prevent classifier context limit failures
-  - Systemd: Restart=always, journald 500M limit
-  - Per-provider timeout/cooldown from config (ProviderRegistry)
-  - presence_penalty / frequency_penalty forwarded (OpenAI-compat + Google)
-  - Unknown model pricing warns once per model
-  - CORS origin parsing trims whitespace
-  - 370 tests passing
-  - Still needs: continued stability testing, edge case hardening, professional polish
+  - Discord alerts + startup self-test
+  - Error tracking in SQLite (status + error_message columns)
+  - Configurable: rate limit, body limit, retention days, oversized threshold, self-test
+  - CORS defaults to localhost dev ports (not wide open)
+  - Google multimodal fix (array content handling)
+  - Moonshot: international platform (api.moonshot.ai), model kimi-latest
 - **Phase 2 (Intelligence)**: NOT STARTED — semantic caching, conversation-aware routing, prompt caching
 - **Phase 3 (Dashboard)**: NOT STARTED — web UI (React SPA), config UI, real-time feed
 - **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker, docs site
 
-## Production Stats (Feb 23, 2026)
+## Production Stats (Feb 24, 2026)
 
-- 80+ requests processed, **66% savings** vs Sonnet baseline
-- 8 providers active and healthy
-- Zero errors since hardening deploy
-- Memory: ~62MB, VPS load: 0.07
+- 90+ requests processed, **66% savings** vs Sonnet baseline
+- 8 providers initialized, 6/6 passing self-test
+- Discord alerts live (startup, shutdown, provider outages)
+- Memory: ~44MB, all providers healthy

@@ -1,111 +1,139 @@
 # Getting Started with Pharos
 
-This guide walks you through setting up Pharos from scratch. You will have an intelligent LLM routing gateway running in under 5 minutes.
+Pharos is an intelligent LLM routing gateway. It classifies each query's complexity in real-time and routes it to the cheapest model that can handle it well. This guide covers local setup through production deployment.
 
 ---
 
-## Table of Contents
+## 1. Prerequisites
 
-1. [Prerequisites](#prerequisites)
-2. [Quick Setup](#quick-setup)
-3. [Get Your API Keys](#get-your-api-keys)
-4. [Configure Environment](#configure-environment)
-5. [Test It Works](#test-it-works)
-6. [What Each Tier Needs](#what-each-tier-needs)
-7. [Configuration Reference](#configuration-reference)
-8. [Deployment Options](#deployment-options)
-9. [Connect Your App](#connect-your-app)
-10. [Troubleshooting](#troubleshooting)
-
----
-
-## Prerequisites
-
-- **Node.js 20+** -- [Download from nodejs.org](https://nodejs.org/)
-- **npm** (comes with Node.js) or **yarn**
-- **At minimum:** A free Groq API key (powers the classifier and free tier)
-- **Recommended:** Anthropic + OpenAI keys for premium and frontier tiers
-
-Verify your Node.js version:
+- **Node.js 20+** -- [nodejs.org](https://nodejs.org/)
+- **At least one API key** -- Groq is the minimum (free, powers the classifier and free-tier routing)
 
 ```bash
 node --version  # Must be v20.0.0 or higher
 ```
 
+### Provider Signup Links
+
+| Provider | Signup | Role |
+|----------|--------|------|
+| **Groq** (required) | https://console.groq.com | Classifier + free tier |
+| **Google AI** | https://aistudio.google.com/apikey | Free tier (Gemini Flash) |
+| **Anthropic** | https://console.anthropic.com | Premium + frontier tiers |
+| **OpenAI** | https://platform.openai.com/api-keys | All tiers (GPT-4o) |
+| **DeepSeek** | https://platform.deepseek.com | Economical tier |
+| **Mistral** | https://console.mistral.ai | Available, not in default tiers |
+| **xAI** | https://console.x.ai | Classifier fallback |
+| **Moonshot** | https://platform.moonshot.ai | Classifier fallback + economical tier |
+
 ---
 
-## Quick Setup
+## 2. Installation
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/GhostSpeculates/PHAROS.git
 cd PHAROS
-
-# 2. Install dependencies
 npm install
-
-# 3. Create your environment file
-cp .env.example .env
-
-# 4. Edit .env — add at least GROQ_API_KEY and PHAROS_API_KEY
-#    (see "Get Your API Keys" below)
-
-# 5. Start the development server
-npm run dev
 ```
 
-Pharos is now running at `http://localhost:3777`.
-
 ---
 
-## Get Your API Keys
+## 3. Configuration
 
-Pharos connects to multiple LLM providers. You only need the ones you want to use. At minimum, you need a **Groq** key (free).
+Pharos uses layered config: `config/pharos.default.yaml` (defaults) -> `pharos.yaml` (your overrides) -> `.env` (secrets). Only set what you want to change.
 
-| Provider | Console URL | What It Powers | Cost |
-|----------|-------------|----------------|------|
-| **Groq** (required) | [console.groq.com](https://console.groq.com) | Classifier + free tier (Llama 3.3 70B) | Free tier available |
-| **Anthropic** | [console.anthropic.com](https://console.anthropic.com) | Premium tier (Claude Sonnet), Frontier tier (Claude Opus) | Pay-per-use |
-| **OpenAI** | [platform.openai.com](https://platform.openai.com) | All tiers (GPT-4o) | Pay-per-use |
-| **Google** | [aistudio.google.com](https://aistudio.google.com) | Free tier (Gemini Flash) | Free tier available |
-| **DeepSeek** | [platform.deepseek.com](https://platform.deepseek.com) | Economical tier | Pay-per-use |
-| **Mistral** | [console.mistral.ai](https://console.mistral.ai) | Available but not in default tiers | Pay-per-use |
-| **xAI** | [console.x.ai](https://console.x.ai) | Classifier fallback (Grok) | Pay-per-use |
-| **Moonshot** | [platform.moonshot.cn](https://platform.moonshot.cn) | Classifier fallback + economical tier (Kimi K2) | Pay-per-use |
+### Setting Up .env
 
-**Start with just Groq.** You can add more providers later by adding their keys to `.env` -- no restart needed for config changes, but you do need to restart the server.
+```bash
+cp .env.example .env
+```
 
----
-
-## Configure Environment
-
-Open `.env` in your editor and fill in your keys:
+Edit `.env` with your values:
 
 ```env
-# Server
-PHAROS_PORT=3777
-PHAROS_API_KEY=choose-a-secret-key-here    # Clients use this to authenticate
+# --- Server ---
+PHAROS_PORT=3777                    # Port to listen on
+PHAROS_HOST=127.0.0.1              # Bind address (localhost-only by default)
+PHAROS_API_KEY=your-secret-here    # Clients authenticate with this Bearer token
+PHAROS_LOG_LEVEL=info              # debug, info, warn, error
 
-# Required: powers the classifier and free tier
-GROQ_API_KEY=gsk_your_groq_key_here
+# --- Alerts (optional) ---
+PHAROS_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
-# Recommended: enables premium/frontier tiers
-ANTHROPIC_API_KEY=sk-ant-your_key_here
-OPENAI_API_KEY=sk-your_key_here
+# --- CORS (optional) ---
+PHAROS_CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 
-# Optional: more providers = more routing options
-GOOGLE_AI_API_KEY=your_google_key_here
-DEEPSEEK_API_KEY=sk-your_deepseek_key_here
-MOONSHOT_API_KEY=your_moonshot_key_here
-XAI_API_KEY=your_xai_key_here
-MISTRAL_API_KEY=your_mistral_key_here
+# --- Provider API Keys ---
+GROQ_API_KEY=gsk_...              # REQUIRED
+GOOGLE_AI_API_KEY=                # Recommended
+ANTHROPIC_API_KEY=                # Optional
+OPENAI_API_KEY=                   # Optional
+DEEPSEEK_API_KEY=                 # Optional
+MISTRAL_API_KEY=                  # Optional
+XAI_API_KEY=                      # Optional
+MOONSHOT_API_KEY=                 # Optional
 ```
 
-The `PHAROS_API_KEY` is a password you choose. Clients must send it as a Bearer token to authenticate. If you leave it empty, authentication is disabled (open mode).
+### Customizing pharos.yaml
+
+Create `pharos.yaml` in the project root. Only include keys you want to override.
+
+```yaml
+# Adjust tier score ranges
+tiers:
+  economical:
+    scoreRange: [5, 6]      # Default [4, 6]
+  premium:
+    scoreRange: [4, 8]      # Default [7, 8]
+
+# Adjust provider timeouts
+providers:
+  anthropic:
+    timeoutMs: 45000        # Default 30000
+    healthCooldownMs: 120000
+
+# Change classifier chain
+classifier:
+  providers:
+    - provider: groq
+      model: llama-3.3-70b-versatile
+    - provider: xai
+      model: grok-3-mini-fast
+  fallbackTier: premium
+  timeoutMs: 5000
+```
+
+### Default Tier Routing
+
+| Tier | Score | Models | Min Keys Needed |
+|------|-------|--------|-----------------|
+| Free | 1-3 | Groq Llama 3.3, Gemini Flash | `GROQ_API_KEY` |
+| Economical | 4-6 | Groq Llama 3.3, Kimi Latest, DeepSeek, GPT-4o | `GROQ_API_KEY` |
+| Premium | 7-8 | Claude Sonnet, GPT-4o | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` |
+| Frontier | 9-10 | Claude Opus, Claude Sonnet, GPT-4o | `ANTHROPIC_API_KEY` |
+
+With only Groq, free and some economical queries work. Add Anthropic + OpenAI for full coverage.
 
 ---
 
-## Test It Works
+## 4. Running Locally
+
+```bash
+npm run dev      # Development mode (auto-restart on changes)
+```
+
+Or for production:
+
+```bash
+npm run build    # Compile TypeScript to dist/
+npm start        # Run compiled build
+```
+
+Pharos starts at `http://localhost:3777`.
+
+---
+
+## 5. Verifying It Works
 
 ### Health Check
 
@@ -113,170 +141,117 @@ The `PHAROS_API_KEY` is a password you choose. Clients must send it as a Bearer 
 curl http://localhost:3777/health
 ```
 
-You should see a JSON response listing your providers and their health status:
-
 ```json
 {
   "status": "ok",
   "service": "pharos",
-  "version": "0.1.0",
   "providers": {
     "groq": { "available": true, "healthy": true }
   }
 }
 ```
 
-### Send a Test Request
+### Sample Chat Completion
 
 ```bash
 curl -X POST http://localhost:3777/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_PHAROS_API_KEY" \
+  -H "Authorization: Bearer your-secret-here" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "pharos-auto",
-    "messages": [{"role": "user", "content": "Hello!"}]
+    "messages": [{"role": "user", "content": "What is 2 + 2?"}]
   }'
 ```
 
-This sends a simple greeting. Pharos will classify it as low complexity (score 1-2) and route it to a free-tier model like Groq Llama 3.3.
+A simple question scores low (1-2) and routes to the free tier. The response follows OpenAI's format with additional `X-Pharos-*` headers showing tier, model, score, and cost.
 
-### View the Dashboard
+### Dashboard
 
-Open `http://localhost:3777` in your browser to see the live dashboard with provider health, request stats, and cost savings.
+Open `http://localhost:3777` in your browser. Auto-refreshes every 30 seconds. Shows provider health, request counts, cost savings, and recent requests.
 
-### Check Stats
+### Stats
 
 ```bash
-curl -H "Authorization: Bearer YOUR_PHAROS_API_KEY" \
-  http://localhost:3777/v1/stats
+curl -H "Authorization: Bearer your-secret-here" http://localhost:3777/v1/stats
 ```
 
 ---
 
-## What Each Tier Needs
+## 6. Deploying to a VPS
 
-Pharos routes queries based on complexity. Here is what API keys you need for each tier:
+### Deploy Script
 
-| Tier | Complexity Score | Required Keys | Models Used |
-|------|-----------------|---------------|-------------|
-| **Free** | 1-3 | `GROQ_API_KEY` | Groq Llama 3.3, Gemini Flash |
-| **Economical** | 4-6 | `GROQ_API_KEY` | Groq Llama 3.3, Kimi K2, DeepSeek, GPT-4o |
-| **Premium** | 7-8 | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | Claude Sonnet, GPT-4o |
-| **Frontier** | 9-10 | `ANTHROPIC_API_KEY` | Claude Opus, Claude Sonnet (fallback) |
-
-**With only a Groq key**, Pharos will handle free and some economical tier queries. Premium and frontier requests will fail over through available providers -- if none are configured, they will fall back to the best available model.
-
-**With Groq + Anthropic + OpenAI**, you have full coverage across all four tiers.
-
----
-
-## Configuration Reference
-
-Pharos uses a layered configuration system:
-
-1. **Default config** -- `config/pharos.default.yaml` (shipped with Pharos, do not edit)
-2. **User overrides** -- `pharos.yaml` in the project root (create this to customize)
-3. **Environment variables** -- `.env` file (overrides everything)
-
-### Customizing Tiers
-
-Create a `pharos.yaml` in the project root to override tier configurations:
-
-```yaml
-# Example: make the classifier more conservative
-# (more queries go to premium tier)
-tiers:
-  economical:
-    scoreRange: [5, 6]    # Was [4, 6] — narrows economical range
-  premium:
-    scoreRange: [4, 8]    # Was [7, 8] — widens premium range
-```
-
-### Key Configuration Options
-
-| Setting | File | Description |
-|---------|------|-------------|
-| Port | `.env` (`PHAROS_PORT`) | Server port (default: 3777) |
-| API key | `.env` (`PHAROS_API_KEY`) | Auth token for clients |
-| Tier score ranges | `pharos.yaml` | Which scores map to which tiers |
-| Tier model pools | `pharos.yaml` | Which models are in each tier |
-| Classifier chain | `pharos.yaml` | Which providers classify queries |
-| Provider timeouts | `pharos.yaml` | Per-provider request timeout |
-| Pricing | `pharos.yaml` | Per-model cost overrides |
-
-See `config/pharos.default.yaml` for the full configuration reference with all available options and their defaults.
-
----
-
-## Deployment Options
-
-### Local Development
+The included script packages everything, uploads via SCP, and configures systemd.
 
 ```bash
-npm run dev    # Auto-restarts on file changes (tsx watch)
-```
-
-### Production (Direct)
-
-```bash
-npm run build   # Compile TypeScript to dist/
-npm start       # Run the compiled build
-```
-
-### Docker
-
-Pharos includes a Dockerfile for containerized deployment:
-
-```bash
-# Build and run with Docker Compose
-docker compose up -d
-
-# Or build manually
-docker build -t pharos .
-docker run -p 3777:3777 --env-file .env -v ./config:/app/config pharos
-```
-
-The Docker setup mounts your `config/` directory and persists the SQLite database in a named volume.
-
-### VPS Deployment
-
-For deploying to a VPS with systemd:
-
-```bash
+# 1. Edit scripts/deploy-vps.sh -- set VPS_HOST, VPS_DIR, PORT
+# 2. Ensure .env exists locally with all keys
+# 3. Build and deploy:
 npm run build
 bash scripts/deploy-vps.sh
 ```
 
-The deploy script packages everything into a tarball, uploads it via SCP, and restarts the systemd service. See the script for details.
+Packages: `dist/`, `config/`, `package.json`, `package-lock.json`, `.env`.
 
-### Recommended Production Setup
+### Systemd Service File
 
-1. Use systemd or Docker for process management (auto-restart on crash)
-2. Set `PHAROS_API_KEY` to a strong secret
-3. Bind to `127.0.0.1` (default) and put behind a reverse proxy if exposing to the internet
-4. Set `NODE_ENV=production` for optimized logging
+The deploy script creates this automatically. For manual setup:
+
+```ini
+[Unit]
+Description=Pharos - Intelligent LLM Routing Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/pharos
+ExecStart=/usr/bin/node dist/index.js
+EnvironmentFile=/root/pharos/.env
+Restart=always
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pharos
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/root/pharos
+MemoryMax=2G
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo cp pharos.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable pharos && sudo systemctl start pharos
+sudo systemctl status pharos
+journalctl -u pharos -f   # Follow logs
+```
+
+### Security
+
+- **Firewall:** `sudo ufw allow ssh && sudo ufw enable` -- do not expose port 3777 directly
+- **Binding:** Pharos binds to `127.0.0.1` by default. Put it behind Nginx or Caddy for TLS.
+- **Reverse proxy:** Forward to `http://127.0.0.1:3777`, set `proxy_buffering off` for SSE streaming support
+- **Rate limiting:** 100 req/min per IP built-in via `@fastify/rate-limit`
 
 ---
 
-## Connect Your App
+## 7. Connecting Your App
 
-Pharos is a drop-in replacement for the OpenAI API. Any app that supports a custom `base_url` can use Pharos.
+Pharos is a drop-in replacement for the OpenAI API. Any app that supports a custom base URL can use it.
 
-### Base URL
+- **Base URL:** `http://localhost:3777/v1` (or your VPS address)
+- **API Key:** Your `PHAROS_API_KEY` value
+- **Model:** `pharos-auto` for intelligent routing, or any specific model name to bypass the classifier
 
-```
-http://localhost:3777/v1
-```
-
-### API Key
-
-Your `PHAROS_API_KEY` value, sent as a Bearer token.
-
-### Model Name
-
-Use `pharos-auto` for intelligent routing (recommended), or any specific model name to bypass the classifier.
-
-### Example: Python (OpenAI SDK)
+### Python (OpenAI SDK)
 
 ```python
 from openai import OpenAI
@@ -293,7 +268,7 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
-### Example: JavaScript/TypeScript (OpenAI SDK)
+### JavaScript / TypeScript (OpenAI SDK)
 
 ```typescript
 import OpenAI from 'openai';
@@ -310,7 +285,7 @@ const response = await client.chat.completions.create({
 console.log(response.choices[0].message.content);
 ```
 
-### Example: curl
+### curl (with streaming)
 
 ```bash
 curl -X POST http://localhost:3777/v1/chat/completions \
@@ -318,52 +293,81 @@ curl -X POST http://localhost:3777/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "pharos-auto",
-    "messages": [{"role": "user", "content": "Explain quantum entanglement"}]
+    "stream": true,
+    "messages": [{"role": "user", "content": "Write a haiku"}]
   }'
 ```
 
-### For OpenClaw / Noir Integration
+### Available Endpoints
 
-See [NOIR-INTEGRATION.md](./NOIR-INTEGRATION.md) for a detailed guide on connecting OpenClaw/Noir Discord bots to Pharos.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Live HTML dashboard |
+| `POST` | `/v1/chat/completions` | Main routing endpoint (OpenAI-compatible) |
+| `GET` | `/v1/models` | List available models |
+| `GET` | `/v1/stats` | Cost tracking and savings |
+| `GET` | `/v1/stats/recent` | Last 25 requests |
+| `GET` | `/health` | Health check with provider status |
 
 ---
 
-## Troubleshooting
+## 8. Troubleshooting
 
 ### "Connection refused" on port 3777
 
-- Make sure Pharos is running (`npm run dev` or `npm start`)
-- Check that nothing else is using port 3777: `lsof -i :3777`
-- Verify the port in `.env` matches your request URL
+- Confirm Pharos is running: `npm run dev` or `npm start`
+- Check port conflict: `lsof -i :3777`
+- Verify `PHAROS_PORT` in `.env` matches your request URL
 
-### "Unauthorized" (401) response
+### "Unauthorized" (401)
 
-- Check that the `Authorization` header uses the format: `Bearer YOUR_PHAROS_API_KEY`
-- Verify the key matches `PHAROS_API_KEY` in your `.env` file
-- If `PHAROS_API_KEY` is empty in `.env`, auth is disabled (any key works)
+- Header must be exactly: `Authorization: Bearer <your-PHAROS_API_KEY>`
+- If `PHAROS_API_KEY` is empty in `.env`, auth is disabled
 
-### Provider shows "unhealthy" in /health
+### Provider returns 401
 
-- Verify the API key for that provider is correct in `.env`
-- The provider may be temporarily down -- Pharos will auto-recover after the cooldown period (default: 60s)
-- Check Pharos logs for specific error messages
+- API key is invalid or expired. Regenerate at the provider's console.
+- Some providers require billing setup before the key works.
 
-### Queries always go to the same tier
+### Provider shows "unhealthy"
 
-- Make sure `GROQ_API_KEY` is set (it powers the classifier)
-- If the classifier fails, Pharos falls back to the premium tier for all queries
-- Check logs for classifier errors: look for "classification failed" messages
+- Check the API key in `.env`
+- Unhealthy = 3 consecutive errors. Auto-recovers after cooldown (default 60s).
+- Check logs for specifics: `journalctl -u pharos -n 50`
+
+### Queries always route to the same tier
+
+- Classifier needs `GROQ_API_KEY`. Without it, everything falls back to premium.
+- Failover chain: Groq -> Moonshot -> xAI -> static premium score.
+- Check logs for "classification failed" messages.
+
+### Request timeouts
+
+- Default timeout is 30s. Override per-provider in `pharos.yaml`:
+  ```yaml
+  providers:
+    anthropic:
+      timeoutMs: 60000
+  ```
+- Requests over 100K tokens trigger context window filtering, skipping undersized providers.
 
 ### Build errors
 
 - Verify Node.js 20+: `node --version`
-- Clear and reinstall: `rm -rf node_modules && npm install`
-- Check TypeScript: `npx tsc --noEmit`
+- Clean install: `rm -rf node_modules && npm install`
+- Type check: `npx tsc --noEmit`
+
+### Systemd service won't start
+
+- Logs: `journalctl -u pharos -n 50 --no-pager`
+- Verify `.env` exists at the `EnvironmentFile` path
+- Verify `dist/index.js` exists (run `npm run build`)
+- Check permissions on the working directory
 
 ---
 
-## See Also
+## Further Reading
 
-- [NOIR-INTEGRATION.md](./NOIR-INTEGRATION.md) -- Connecting OpenClaw/Noir Discord bots to Pharos
-- [PRODUCT.md](./PRODUCT.md) -- Product definition, roadmap, and architecture details
-- [config/pharos.default.yaml](./config/pharos.default.yaml) -- Full configuration reference
+- `config/pharos.default.yaml` -- Full configuration reference
+- `NOIR-INTEGRATION.md` -- Connecting OpenClaw/Noir Discord bots
+- `PRODUCT.md` -- Product definition and roadmap

@@ -124,16 +124,21 @@ providers:
 
 # Model pricing — cost per million tokens (input/output)
 # These override the hardcoded defaults in the cost calculator
+#
+# Free tier models: Groq and Google Gemini Flash are priced at $0 because
+# their free API tiers cover Pharos usage at typical volumes.
+# Groq paid rate: $0.59/$0.79, Google paid rate: $0.30/$2.50 (standard API)
+# If you exceed free tier limits, update these entries to reflect actual costs.
 pricing:
   # ─── Free Tier ───
   - provider: google
     model: gemini-2.5-flash
-    inputCostPerMillion: 0.15
-    outputCostPerMillion: 0.60
+    inputCostPerMillion: 0
+    outputCostPerMillion: 0
   - provider: groq
     model: llama-3.3-70b-versatile
-    inputCostPerMillion: 0.59
-    outputCostPerMillion: 0.79
+    inputCostPerMillion: 0
+    outputCostPerMillion: 0
   # ─── Economical Tier ───
   - provider: deepseek
     model: deepseek-chat
