@@ -19,7 +19,10 @@ function makeConfig(overrides?: Partial<PharosConfig['tiers']>): PharosConfig {
         classifier: {
             providers: [{ provider: 'google', model: 'gemini-2.0-flash' }],
             fallbackTier: 'economical',
-            timeoutMs: 5000,
+            timeoutMs: 3000,
+            maxConcurrent: 5,
+            cacheMaxSize: 100,
+            cacheTtlMs: 30000,
         },
         tiers: { ...defaultTiers, ...overrides },
         providers: {},

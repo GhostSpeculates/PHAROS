@@ -48,7 +48,10 @@ export const ClassifierConfigSchema = z.object({
     fallbackTier: z
         .enum(['free', 'economical', 'premium', 'frontier'])
         .default('economical'),
-    timeoutMs: z.number().positive().default(5000),
+    timeoutMs: z.number().positive().default(3000),
+    maxConcurrent: z.number().int().positive().default(5),
+    cacheMaxSize: z.number().int().positive().default(100),
+    cacheTtlMs: z.number().int().positive().default(30000),
 }).transform((data) => {
     // Backward compatibility: wrap single provider/model into providers array
     let providers: Array<{ provider: string; model: string }>;
@@ -65,6 +68,9 @@ export const ClassifierConfigSchema = z.object({
         providers,
         fallbackTier: data.fallbackTier,
         timeoutMs: data.timeoutMs,
+        maxConcurrent: data.maxConcurrent,
+        cacheMaxSize: data.cacheMaxSize,
+        cacheTtlMs: data.cacheTtlMs,
     };
 });
 

@@ -35,4 +35,11 @@ export interface CostSummary {
     errorRate: number;
     byTier: Record<string, { count: number; cost: number }>;
     byProvider: Record<string, { count: number; cost: number }>;
+    classifier?: {
+        providerDistribution: Record<string, number>;
+        cacheHits: number;
+        cacheMisses: number;
+        averageLatencyMs: number;
+        rateLimits: number;
+    };
 }

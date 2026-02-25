@@ -38,7 +38,12 @@ classifier:
   # "economical" is safest: under-classify (cheap) rather than over-classify (expensive)
   fallbackTier: economical
   # Max time to wait for classification per provider (ms)
-  timeoutMs: 5000
+  timeoutMs: 3000
+  # Max concurrent classifier calls (prevents overwhelming classifier providers under burst)
+  maxConcurrent: 5
+  # Short-TTL cache for deduplicating identical queries under burst load
+  cacheMaxSize: 100
+  cacheTtlMs: 30000
 
 # Routing tiers — score ranges map to model pools
 tiers:

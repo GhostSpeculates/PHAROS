@@ -299,7 +299,10 @@ describe('ClassifierConfigSchema', () => {
                 { provider: 'google', model: 'gemini-2.0-flash' },
             ]);
             expect(result.data.fallbackTier).toBe('economical');
-            expect(result.data.timeoutMs).toBe(5000);
+            expect(result.data.timeoutMs).toBe(3000);
+            expect(result.data.maxConcurrent).toBe(5);
+            expect(result.data.cacheMaxSize).toBe(100);
+            expect(result.data.cacheTtlMs).toBe(30000);
         }
     });
 

@@ -658,7 +658,9 @@ ${recentRows}
         if (!tracker) {
             return { error: 'Tracking is disabled' };
         }
-        return tracker.getSummary();
+        const summary = tracker.getSummary();
+        summary.classifier = classifier.getMetrics();
+        return summary;
     });
 
     // ─── Recent Requests endpoint ───

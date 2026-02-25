@@ -14,7 +14,10 @@ function makeConfig(): PharosConfig {
         classifier: {
             providers: [{ provider: 'groq', model: 'llama-3.3-70b-versatile' }],
             fallbackTier: 'economical',
-            timeoutMs: 5000,
+            timeoutMs: 3000,
+            maxConcurrent: 5,
+            cacheMaxSize: 100,
+            cacheTtlMs: 30000,
         },
         tiers: {
             free: {
