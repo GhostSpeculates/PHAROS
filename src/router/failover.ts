@@ -2,6 +2,7 @@ import type { PharosConfig, TierName, ModelEntry } from '../config/schema.js';
 import type { ProviderRegistry } from '../providers/index.js';
 import type { Logger } from '../utils/logger.js';
 import { getTierFailoverOrder } from './tier-resolver.js';
+import { sendAlert } from '../utils/alerts.js';
 
 export interface FailoverResult {
     provider: string;
@@ -62,6 +63,13 @@ export function findAvailableModel(
             }
         }
     }
+
+    sendAlert(
+        'All Providers Unavailable',
+        `No available providers across all tiers.\nTried ${attempts} models: ${failedProviders.join(', ')}`,
+        'critical',
+        'all_providers_unavailable',
+    );
 
     throw new Error(
         `No available providers found after trying ${attempts} models across all tiers. ` +

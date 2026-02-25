@@ -72,6 +72,11 @@ function applyEnvOverrides(config: Record<string, unknown>): void {
         ensureNested(config, 'logging');
         (config.logging as Record<string, unknown>).level = process.env.PHAROS_LOG_LEVEL;
     }
+
+    if (process.env.PHAROS_DISCORD_WEBHOOK_URL) {
+        ensureNested(config, 'alerts');
+        (config.alerts as Record<string, unknown>).discordWebhookUrl = process.env.PHAROS_DISCORD_WEBHOOK_URL;
+    }
 }
 
 /**

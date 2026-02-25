@@ -4,6 +4,7 @@ import type { ClassificationResult, TaskType } from './types.js';
 import { TASK_TYPES } from './types.js';
 import { CLASSIFICATION_PROMPT, buildClassificationInput } from './prompt.js';
 import type { Logger } from '../utils/logger.js';
+import { sendAlert } from '../utils/alerts.js';
 
 interface ClassifierProvider {
     name: string;
@@ -129,6 +130,15 @@ export class QueryClassifier {
                     { provider: cp.name, model: cp.model, error: errMsg },
                     'Classifier provider failed, trying next',
                 );
+                // Alert on primary classifier failure (first in chain)
+                if (cp === this.classifierProviders[0]) {
+                    sendAlert(
+                        'Classifier Failover',
+                        `Primary classifier **${cp.name}/${cp.model}** failed.\nError: ${errMsg}\nFalling back to next provider.`,
+                        'warning',
+                        `classifier_failover:${cp.name}`,
+                    );
+                }
             } finally {
                 clearTimeout(timeoutId);
             }
@@ -136,6 +146,12 @@ export class QueryClassifier {
 
         // All providers failed
         this.logger.warn('All classifier providers failed, using fallback');
+        sendAlert(
+            'All Classifiers Failed',
+            `All ${this.classifierProviders.length} classifier providers failed.\nUsing static fallback score (${this.fallbackTier} tier midpoint).`,
+            'critical',
+            'classifier_all_failed',
+        );
         return this.fallback(startTime, 'all_providers_failed');
     }
 
