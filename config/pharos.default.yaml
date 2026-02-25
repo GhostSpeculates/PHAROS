@@ -35,7 +35,8 @@ classifier:
     - provider: xai
       model: grok-3-mini-fast
   # Fallback tier if ALL classifier providers fail
-  fallbackTier: premium
+  # "economical" is safest: under-classify (cheap) rather than over-classify (expensive)
+  fallbackTier: economical
   # Max time to wait for classification per provider (ms)
   timeoutMs: 5000
 

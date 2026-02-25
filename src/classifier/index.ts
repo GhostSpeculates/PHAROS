@@ -232,7 +232,7 @@ export class QueryClassifier {
             classifierProvider: 'fallback',
         };
 
-        this.logger.debug({ reason, fallbackScore: result.score }, 'Using fallback classification');
+        this.logger.warn({ reason, fallbackScore: result.score }, 'Using fallback classification');
         return result;
     }
 }
