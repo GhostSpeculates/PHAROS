@@ -29,9 +29,12 @@ let pricingLogger: Logger | null = null;
 // Hardcoded defaults — used as fallback when config doesn't specify pricing
 const PRICING_DEFAULTS: Record<string, ModelPricing> = {
     // ─── Free Tier ───
+    // Groq: free at low volume (free tier covers Pharos usage)
+    // Google Gemini Flash: free via Gemini Developer API free tier (rate-limited, no per-token charge)
+    // If self-hosting at high volume, override via config pricing section
     'google/gemini-2.0-flash': { inputPerMillion: 0, outputPerMillion: 0 },
-    'google/gemini-2.5-flash': { inputPerMillion: 0.15, outputPerMillion: 0.60 },
-    'groq/llama-3.3-70b-versatile': { inputPerMillion: 0.59, outputPerMillion: 0.79 },
+    'google/gemini-2.5-flash': { inputPerMillion: 0, outputPerMillion: 0 },
+    'groq/llama-3.3-70b-versatile': { inputPerMillion: 0, outputPerMillion: 0 },
 
     // ─── Economical Tier ───
     'deepseek/deepseek-chat': { inputPerMillion: 0.14, outputPerMillion: 0.28 },
