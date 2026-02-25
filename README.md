@@ -83,13 +83,28 @@ Your App  -->  Pharos Gateway  -->  Query Classifier  -->  Optimal Model
 
 ---
 
+## Docker
+
+```bash
+# Start Pharos
+docker compose up -d
+
+# View logs
+docker compose logs -f pharos
+
+# Stop
+docker compose down
+```
+
+Make sure your `.env` file is configured before running. SQLite data persists in `./data/` and config overrides load from `./config/`.
+
 ## Deployment
 
 | Method | Command | Notes |
 |--------|---------|-------|
 | **Local dev** | `npm run dev` | Auto-restarts on file changes |
 | **Production** | `npm run build && npm start` | Compiled TypeScript |
-| **Docker** | `docker compose up -d` | See [Dockerfile](./Dockerfile) |
+| **Docker** | `docker compose up -d` | See above |
 | **VPS** | `bash scripts/deploy-vps.sh` | SCP + systemd |
 
 See [GETTING_STARTED.md](./GETTING_STARTED.md) for detailed deployment instructions.
@@ -101,7 +116,7 @@ See [GETTING_STARTED.md](./GETTING_STARTED.md) for detailed deployment instructi
 - **Runtime**: Node.js 20+ / TypeScript (ES2022, ESM)
 - **HTTP**: Fastify 5 with CORS, rate limiting
 - **Validation**: Zod
-- **Testing**: Vitest 4 (370 tests)
+- **Testing**: Vitest 4 (772 tests)
 - **Providers**: `@anthropic-ai/sdk`, `@google/genai`, `openai`
 - **Database**: better-sqlite3 (request tracking)
 - **Config**: YAML with env-var overrides
@@ -111,7 +126,7 @@ See [GETTING_STARTED.md](./GETTING_STARTED.md) for detailed deployment instructi
 
 **Phase 1 (Core Engine): IN PROGRESS** — Deployed to production, routing live traffic. Core infrastructure is built but Phase 1 requires continued hardening, bug fixes, and professional polish before moving to Phase 2.
 
-- 8 providers configured, 370 tests passing, 66%+ cost savings
+- 8 providers configured, 772 tests passing, 73%+ cost savings
 - Classifier failover chain, context-size-aware routing, production hardening
 - Needs continued stability testing and edge case coverage
 
