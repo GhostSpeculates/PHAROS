@@ -205,15 +205,16 @@ src/
 
 - **Framework**: Vitest 4
 - **Test files**: `src/__tests__/*.test.ts`
-- **Coverage**: tier-resolver (23), cost-calculator (20), auth middleware (9), ID generators (10), config schema (38), classifier (11), failover (15), tracking-store (23), router (15), context (21), stream (10), providers (118), alerts (15), self-test (15)
-- **Total**: 686 tests, all passing (343 src + 343 dist)
+- **Coverage**: tier-resolver (23), cost-calculator (20), auth middleware (9), ID generators (10), config schema (41), classifier (11), failover (15), tracking-store (23), router (15), context (21), stream (10), providers (118), alerts (37), self-test (15), semaphore, lru-cache
+- **Total**: 772 tests, all passing (386 src + 386 dist)
 - Run: `npm test` or `npm run test:watch`
 
 ## Alerts & Monitoring
 
 - Discord webhook alerts via `src/utils/alerts.ts` (singleton pattern)
-- Configured via `PHAROS_DISCORD_WEBHOOK_URL` env var or `alerts.discordWebhookUrl` in YAML
-- Severity levels: info (green), warning (yellow), critical (red)
+- Phone push notifications via ntfy.sh (critical alerts only) — configured via `PHAROS_NTFY_TOPIC`
+- Configured via `PHAROS_DISCORD_WEBHOOK_URL` + `PHAROS_NTFY_TOPIC` env vars
+- Severity levels: info (green/Discord only), warning (yellow/Discord only), critical (red/both Discord + phone)
 - 5-minute cooldown per alert key to prevent spam
 - Triggers: startup/shutdown, provider unhealthy (3 errors), classifier failover, all providers unavailable
 - Startup self-test (`src/utils/self-test.ts`): sends tiny request to each provider, logs pass/fail
@@ -224,21 +225,26 @@ src/
 - **Phase 1 (Core Engine)**: IN PROGRESS — core built and deployed, needs continued hardening
   - ⚠️ Phase 1 is NOT complete. Do NOT start Phase 2 features until Ghost declares Phase 1 done.
   - ⚠️ Do NOT change this status line. Only the project owner (Ghost) can declare Phase 1 complete.
-  - Routing, classification, multi-provider (8), failover, tracking, security, 686 tests
-  - Classifier failover chain (Groq → Kimi → xAI → fallback)
-  - Discord alerts + startup self-test
+  - Routing, classification, multi-provider (8), failover, tracking, security, 772 tests
+  - Classifier: concurrency semaphore (max 5), LRU cache (30s TTL), 429 fast failover, metrics
+  - Classifier failover chain (Groq → Moonshot/kimi-latest → xAI → static fallback/economical)
+  - Frontier prompt tightened: 99% of tasks score 1-8, explicit "NOT 9-10" examples
+  - Discord alerts + ntfy.sh phone push (critical only) + startup self-test
   - Error tracking in SQLite (status + error_message columns)
-  - Configurable: rate limit, body limit, retention days, oversized threshold, self-test
+  - Configurable: rate limit, body limit, retention days, oversized threshold, self-test, classifier concurrency
   - CORS defaults to localhost dev ports (not wide open)
   - Google multimodal fix (array content handling)
   - Moonshot: international platform (api.moonshot.ai), model kimi-latest
+  - Stress test script: `scripts/stress-test.sh` (35 requests, 3 phases, burst + mixed load)
 - **Phase 2 (Intelligence)**: NOT STARTED — semantic caching, conversation-aware routing, prompt caching
 - **Phase 3 (Dashboard)**: NOT STARTED — web UI (React SPA), config UI, real-time feed
 - **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker, docs site
 
 ## Production Stats (Feb 24, 2026)
 
-- 90+ requests processed, **66% savings** vs Sonnet baseline
+- 150+ requests processed, **66% savings** vs Sonnet baseline
 - 8 providers initialized, 6/6 passing self-test
-- Discord alerts live (startup, shutdown, provider outages)
+- Stress tested: 35/35 requests under burst load, 0 failures, 0 misclassifications
+- Discord alerts + ntfy.sh phone notifications live
+- Classifier metrics: cache hits, rate limit tracking, provider distribution
 - Memory: ~44MB, all providers healthy
