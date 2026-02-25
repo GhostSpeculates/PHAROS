@@ -91,6 +91,11 @@ export const RouterConfigSchema = z.object({
     oversizedThresholdTokens: z.number().int().positive().default(100_000),
 });
 
+// ─── Alerts configuration ───
+export const AlertsConfigSchema = z.object({
+    discordWebhookUrl: z.string().url().optional(),
+});
+
 // ─── Auth configuration ───
 export const AuthConfigSchema = z.object({
     apiKey: z.string().default(''),
@@ -106,6 +111,7 @@ export const LoggingConfigSchema = z.object({
 export const PharosConfigSchema = z.object({
     server: ServerConfigSchema.default({}),
     auth: AuthConfigSchema.default({}),
+    alerts: AlertsConfigSchema.default({}),
     router: RouterConfigSchema.default({}),
     classifier: ClassifierConfigSchema.default({}),
     tiers: z

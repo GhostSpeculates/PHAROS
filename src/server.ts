@@ -10,6 +10,7 @@ import { registerRoutes } from './gateway/router.js';
 import { createErrorHandler } from './gateway/middleware/error-handler.js';
 import { createLogger, type Logger } from './utils/logger.js';
 import { initPricing } from './tracking/cost-calculator.js';
+import { initAlerts, sendAlert } from './utils/alerts.js';
 
 /**
  * Create and configure the Pharos server.
@@ -27,6 +28,9 @@ export async function createServer(config: PharosConfig): Promise<{
 
     logger.info('⚡ Pharos — Intelligent LLM Routing Gateway');
     logger.info('────────────────────────────────────────────');
+
+    // ─── Initialize Alerts ───
+    initAlerts(config.alerts?.discordWebhookUrl, logger);
 
     // ─── Initialize Pricing ───
     initPricing(config.pricing, logger);
@@ -88,6 +92,12 @@ export async function createServer(config: PharosConfig): Promise<{
             logger.info(`   GET  /v1/stats              →  Cost & savings`);
             logger.info(`   GET  /health                →  Health check`);
             logger.info('────────────────────────────────────────────');
+
+            sendAlert(
+                'Pharos Started',
+                `Server is live on port ${config.server.port}\nProviders: ${availableProviders.join(', ') || 'none'}`,
+                'info',
+            );
         },
         stop: async () => {
             logger.info('Shutting down Pharos...');
@@ -112,6 +122,9 @@ export async function createServer(config: PharosConfig): Promise<{
 
             // Now safe to close the tracking DB — no more requests in flight
             tracker?.close();
+
+            // Send shutdown alert (best-effort, don't await long)
+            await sendAlert('Pharos Stopped', 'Server shut down gracefully.', 'info');
 
             logger.info('Pharos stopped.');
         },

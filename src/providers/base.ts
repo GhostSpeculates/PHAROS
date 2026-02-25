@@ -1,5 +1,6 @@
 import type { ChatRequest, ChatResponse, ChatStreamChunk, ProviderHealth, LatencyStats } from './types.js';
 import type { Logger } from '../utils/logger.js';
+import { sendAlert } from '../utils/alerts.js';
 
 /**
  * Abstract base class for all LLM provider adapters.
@@ -71,6 +72,12 @@ export abstract class LLMProvider {
         if (this.health.consecutiveErrors >= 3) {
             this.health.available = false;
             this.logger.warn(`Provider ${this.name}: marked unavailable after 3 consecutive errors`);
+            sendAlert(
+                'Provider Unhealthy',
+                `**${this.name}** marked unavailable after 3 consecutive errors.\nLast error: ${error}`,
+                'warning',
+                `provider_unhealthy:${this.name}`,
+            );
         }
     }
 
