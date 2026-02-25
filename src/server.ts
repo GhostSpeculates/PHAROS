@@ -11,6 +11,7 @@ import { createErrorHandler } from './gateway/middleware/error-handler.js';
 import { createLogger, type Logger } from './utils/logger.js';
 import { initPricing } from './tracking/cost-calculator.js';
 import { initAlerts, sendAlert } from './utils/alerts.js';
+import { providerSelfTest } from './utils/self-test.js';
 
 /**
  * Create and configure the Pharos server.
@@ -84,6 +85,12 @@ export async function createServer(config: PharosConfig): Promise<{
     // ─── Server lifecycle ───
     return {
         start: async () => {
+            // Run provider self-test before listening (skip in test environment)
+            let selfTestResults: { passed: string[]; failed: string[] } | undefined;
+            if (config.server.selfTest && !process.env.VITEST) {
+                selfTestResults = await providerSelfTest(config, registry, logger);
+            }
+
             await app.listen({ port: config.server.port, host: config.server.host });
             logger.info('────────────────────────────────────────────');
             logger.info(`🚀 Pharos is live on http://localhost:${config.server.port}`);
@@ -93,11 +100,28 @@ export async function createServer(config: PharosConfig): Promise<{
             logger.info(`   GET  /health                →  Health check`);
             logger.info('────────────────────────────────────────────');
 
-            sendAlert(
-                'Pharos Started',
-                `Server is live on port ${config.server.port}\nProviders: ${availableProviders.join(', ') || 'none'}`,
-                'info',
-            );
+            // Startup alert — include self-test results if available
+            if (selfTestResults && selfTestResults.failed.length > 0) {
+                sendAlert(
+                    'Startup Self-Test Warning',
+                    `**${selfTestResults.passed.length}/${selfTestResults.passed.length + selfTestResults.failed.length} providers passed**\n\n` +
+                    (selfTestResults.passed.length > 0 ? `✓ ${selfTestResults.passed.join(', ')}\n` : '') +
+                    `✗ ${selfTestResults.failed.join('\n✗ ')}`,
+                    'warning',
+                );
+            } else if (selfTestResults && selfTestResults.passed.length > 0) {
+                sendAlert(
+                    'Pharos Started',
+                    `Server is live on port ${config.server.port}\nAll ${selfTestResults.passed.length} providers verified: ${selfTestResults.passed.join(', ')}`,
+                    'info',
+                );
+            } else {
+                sendAlert(
+                    'Pharos Started',
+                    `Server is live on port ${config.server.port}\nProviders: ${availableProviders.join(', ') || 'none'}`,
+                    'info',
+                );
+            }
         },
         stop: async () => {
             logger.info('Shutting down Pharos...');
