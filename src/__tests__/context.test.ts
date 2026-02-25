@@ -25,8 +25,8 @@ describe('getContextWindow', () => {
         expect(getContextWindow('deepseek-chat')).toBe(131_072);
     });
 
-    it('returns known context window for kimi-k2', () => {
-        expect(getContextWindow('kimi-k2')).toBe(128_000);
+    it('returns known context window for kimi-latest', () => {
+        expect(getContextWindow('kimi-latest')).toBe(131_072);
     });
 });
 
