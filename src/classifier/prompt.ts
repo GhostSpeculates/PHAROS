@@ -30,12 +30,12 @@ SCORING GUIDE (1-10):
   Rule: Complex code generation, system design, multi-step debugging, technical deep-dives. This is where MOST hard tasks belong.
 
 8 — ADVANCED (premium tier)
-  Examples: "Design a microservices architecture for an e-commerce platform", "Implement a B-tree in C with delete operations", "Write a comprehensive comparison of Raft vs Paxos"
-  Rule: Advanced system design, complex algorithms, strategic planning, lengthy creative writing. The CEILING for standard complex work.
+  Examples: "Design a microservices architecture for an e-commerce platform with 10M DAUs", "Implement a lock-free concurrent hash map in C++ using atomic operations", "Implement a B-tree in C with delete operations", "Write a comprehensive comparison of Raft vs Paxos", "Design a compiler optimization pipeline", "Deep technical analysis of the CAP theorem and its implications for distributed databases"
+  Rule: Advanced system design (even at massive scale), complex data structure implementations (B-trees, lock-free structures, skip lists), deep technical analyses (CAP theorem, consensus algorithms, type theory), compiler/interpreter design, strategic planning, lengthy creative writing. This is the CEILING for ALL standard engineering work, no matter how complex. If the topic exists in textbooks, university courses, or established engineering practice, it scores 8 AT MOST.
 
 9 — FRONTIER (frontier tier — RARE)
   Examples: "Derive a novel proof connecting information theory to neural network generalization bounds", "Design a formally verified distributed consensus protocol with Byzantine fault tolerance proofs"
-  Rule: ONLY when the task combines multiple PhD-level specialties, requires novel theoretical synthesis, or demands formal mathematical proofs across domains. Ask yourself: would a senior engineer struggle with this? If yes but a PhD could handle it, score 8. If even a PhD would need to think hard, score 9.
+  Rule: ONLY when the task requires NOVEL THEORETICAL SYNTHESIS that does not exist in textbooks or established literature. This means creating genuinely new theory, not applying known theory. DO NOT score 9 just because a task is long, detailed, or touches multiple topics. Standard engineering tasks score 7-8 no matter how complex. Score 9 only when the task requires inventing something new at a PhD-research level — combining multiple academic specialties in ways that haven't been done before, or demanding formal mathematical proofs that bridge unrelated fields. Ask yourself: could a knowledgeable engineer answer this by studying existing resources? If yes, score 7-8.
 
 10 — EXCEPTIONAL (frontier tier — EXTREMELY RARE)
   Examples: "Unify RLHF with mechanism design theory using Arrow's impossibility theorem and provide formal proofs", "Derive new bounds on transformer expressiveness using circuit complexity theory"
@@ -48,9 +48,18 @@ CRITICAL RULES:
 - Consider the FULL conversation context, not just the last message.
 - If multiple messages exist, weight the most recent user message most heavily.
 - Default to 5 if truly uncertain — never over-classify.
-- 90% of complex tasks should score 7-8. Score 9-10 ONLY if the task is genuinely unprecedented in difficulty.
+- 99% of tasks should score 1-8. Score 9-10 is for genuinely unprecedented research questions only.
 - A long or detailed prompt does NOT automatically mean high complexity. "Design a REST API with 10 endpoints" is still 7-8, not 9-10.
 - Having a complex system prompt (like an AI agent persona) does NOT push the score to 9-10 — judge the USER's actual question.
+
+COMMON OVER-CLASSIFICATION MISTAKES (these are NOT 9-10):
+- "Design a microservices architecture for a platform with 10M DAUs" → 7-8 (well-established engineering, covered in every system design textbook)
+- "Implement a lock-free concurrent hash map in C++" → 8 (challenging but a known technique with published implementations)
+- "Design a compiler optimization pipeline" → 8 (computer science curriculum, well-documented in textbooks like the Dragon Book)
+- "Analyze the CAP theorem and its tradeoffs" → 7-8 (well-documented topic with decades of literature)
+- "Analyze game theory in cryptocurrency mining pools" → 7-8 (applied game theory, published research exists)
+- "Write a detailed technical analysis of distributed consensus" → 7-8 (standard distributed systems topic)
+All of these are complex and valuable tasks, but they have KNOWN SOLUTIONS and EXISTING LITERATURE. They belong in premium (7-8), not frontier (9-10).
 
 Respond ONLY with JSON (no markdown, no explanation):
 {"score": N, "type": "..."}`;

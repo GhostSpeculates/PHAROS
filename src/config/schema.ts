@@ -101,6 +101,7 @@ export const RouterConfigSchema = z.object({
 // ─── Alerts configuration ───
 export const AlertsConfigSchema = z.object({
     discordWebhookUrl: z.string().url().optional(),
+    ntfyTopic: z.string().optional(),
 });
 
 // ─── Auth configuration ───

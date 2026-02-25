@@ -24,7 +24,7 @@ beforeEach(() => {
     mockFetch.mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal('fetch', mockFetch);
     resetAlertCooldowns();
-    // Reset to no webhook so tests are isolated
+    // Reset to no webhook/topic so tests are isolated
     initAlerts(undefined, mockLogger());
 });
 
@@ -52,6 +52,28 @@ describe('alerts', () => {
             const logger = mockLogger();
             initAlerts('  ', logger);
             expect(logger.debug).toHaveBeenCalledWith('Discord alerts: disabled (no webhook URL)');
+        });
+
+        it('enables ntfy when topic is provided', () => {
+            const logger = mockLogger();
+            initAlerts(undefined, logger, 'test-topic');
+            expect(logger.info).toHaveBeenCalledWith('ntfy.sh push notifications: enabled');
+        });
+
+        it('disables ntfy when no topic', () => {
+            const logger = mockLogger();
+            initAlerts(undefined, logger);
+            expect(logger.debug).toHaveBeenCalledWith(
+                'ntfy.sh push notifications: disabled (no topic)',
+            );
+        });
+
+        it('disables ntfy for empty/whitespace topic', () => {
+            const logger = mockLogger();
+            initAlerts(undefined, logger, '  ');
+            expect(logger.debug).toHaveBeenCalledWith(
+                'ntfy.sh push notifications: disabled (no topic)',
+            );
         });
     });
 
@@ -122,7 +144,7 @@ describe('alerts', () => {
             expect(body3.embeds[0].title).toMatch(/^🚨/);
         });
 
-        it('silently no-ops when no webhook URL configured', async () => {
+        it('silently no-ops when neither webhook URL nor ntfy topic configured', async () => {
             const logger = mockLogger();
             initAlerts(undefined, logger);
 
@@ -145,7 +167,10 @@ describe('alerts', () => {
             mockFetch.mockResolvedValue({ ok: false, status: 429 });
 
             await sendAlert('Test', 'msg', 'info');
-            expect(logger.warn).toHaveBeenCalledWith({ status: 429 }, 'Discord alert delivery failed');
+            expect(logger.warn).toHaveBeenCalledWith(
+                { status: 429 },
+                'Discord alert delivery failed',
+            );
         });
     });
 
@@ -193,6 +218,95 @@ describe('alerts', () => {
 
             await sendAlert('Alert', 'msg', 'info', 'key');
             expect(mockFetch).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    describe('ntfy.sh push notifications', () => {
+        it('sends ntfy notification on critical severity when topic configured', async () => {
+            const logger = mockLogger();
+            initAlerts(undefined, logger, 'test-topic');
+
+            await sendAlert('Down', 'All providers failed', 'critical');
+
+            expect(mockFetch).toHaveBeenCalledOnce();
+            const [url, opts] = mockFetch.mock.calls[0];
+            expect(url).toBe('https://ntfy.sh/test-topic');
+            expect(opts.method).toBe('POST');
+            expect(opts.headers.Title).toBe('Down');
+            expect(opts.headers.Priority).toBe('5');
+            expect(opts.headers.Tags).toBe('rotating_light');
+            expect(opts.body).toBe('All providers failed');
+        });
+
+        it('does NOT send ntfy on info severity', async () => {
+            const logger = mockLogger();
+            initAlerts(undefined, logger, 'test-topic');
+
+            await sendAlert('Info', 'msg', 'info');
+            expect(mockFetch).not.toHaveBeenCalled();
+        });
+
+        it('does NOT send ntfy on warning severity', async () => {
+            const logger = mockLogger();
+            initAlerts(undefined, logger, 'test-topic');
+
+            await sendAlert('Warn', 'msg', 'warning');
+            expect(mockFetch).not.toHaveBeenCalled();
+        });
+
+        it('sends both Discord and ntfy on critical', async () => {
+            const logger = mockLogger();
+            initAlerts('https://discord.com/api/webhooks/test', logger, 'test-topic');
+
+            await sendAlert('Down', 'msg', 'critical');
+
+            expect(mockFetch).toHaveBeenCalledTimes(2);
+            // First call is Discord
+            expect(mockFetch.mock.calls[0][0]).toBe('https://discord.com/api/webhooks/test');
+            // Second call is ntfy
+            expect(mockFetch.mock.calls[1][0]).toBe('https://ntfy.sh/test-topic');
+        });
+
+        it('respects cooldown for ntfy', async () => {
+            const logger = mockLogger();
+            initAlerts(undefined, logger, 'test-topic');
+
+            await sendAlert('Down', 'msg', 'critical', 'same-key');
+            await sendAlert('Down', 'msg', 'critical', 'same-key');
+
+            expect(mockFetch).toHaveBeenCalledOnce();
+        });
+
+        it('strips markdown from ntfy message body', async () => {
+            const logger = mockLogger();
+            initAlerts(undefined, logger, 'test-topic');
+
+            await sendAlert('Down', '**bold** text with *italic*', 'critical');
+
+            expect(mockFetch).toHaveBeenCalledOnce();
+            const [, opts] = mockFetch.mock.calls[0];
+            expect(opts.body).toBe('bold text with italic');
+        });
+
+        it('does not throw on ntfy fetch failure', async () => {
+            const logger = mockLogger();
+            initAlerts(undefined, logger, 'test-topic');
+            mockFetch.mockRejectedValue(new Error('network error'));
+
+            await expect(sendAlert('Down', 'msg', 'critical')).resolves.toBeUndefined();
+            expect(logger.debug).toHaveBeenCalled();
+        });
+
+        it('logs warning on ntfy non-ok response', async () => {
+            const logger = mockLogger();
+            initAlerts(undefined, logger, 'test-topic');
+            mockFetch.mockResolvedValue({ ok: false, status: 500 });
+
+            await sendAlert('Down', 'msg', 'critical');
+            expect(logger.warn).toHaveBeenCalledWith(
+                { status: 500 },
+                'ntfy.sh alert delivery failed',
+            );
         });
     });
 });

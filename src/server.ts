@@ -31,7 +31,7 @@ export async function createServer(config: PharosConfig): Promise<{
     logger.info('────────────────────────────────────────────');
 
     // ─── Initialize Alerts ───
-    initAlerts(config.alerts?.discordWebhookUrl, logger);
+    initAlerts(config.alerts?.discordWebhookUrl, logger, config.alerts?.ntfyTopic);
 
     // ─── Initialize Pricing ───
     initPricing(config.pricing, logger);
