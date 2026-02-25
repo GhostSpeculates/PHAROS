@@ -26,4 +26,6 @@ export interface ClassificationResult {
     isFallback: boolean;
     /** Which classifier provider handled this request */
     classifierProvider: string;
+    /** Whether this result came from the classifier cache */
+    isCacheHit?: boolean;
 }

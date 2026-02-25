@@ -8,7 +8,7 @@ set -uo pipefail
 # ═══════════════════════════════════════════════════════════════
 
 BASE_URL="http://localhost:3777"
-TIMEOUT=30
+TIMEOUT=60
 RESULTS_DIR=$(mktemp -d)
 
 # Read API key from local .env

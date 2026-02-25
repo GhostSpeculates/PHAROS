@@ -125,11 +125,10 @@ describe('buildClassificationInput', () => {
 });
 
 // ────────────────────────────────────────────────────────────────
-// ClassificationResult type — classifierProvider field
+// ClassificationResult type — classifierProvider + isCacheHit fields
 // ────────────────────────────────────────────────────────────────
 describe('ClassificationResult type', () => {
     it('includes classifierProvider field', () => {
-        // Type-level test: ensure the interface includes classifierProvider
         const result = {
             score: 5,
             type: 'analysis' as const,
@@ -138,5 +137,52 @@ describe('ClassificationResult type', () => {
             classifierProvider: 'groq',
         };
         expect(result.classifierProvider).toBe('groq');
+    });
+
+    it('includes optional isCacheHit field', () => {
+        const result = {
+            score: 3,
+            type: 'lookup' as const,
+            latencyMs: 1,
+            isFallback: false,
+            classifierProvider: 'groq',
+            isCacheHit: true,
+        };
+        expect(result.isCacheHit).toBe(true);
+    });
+});
+
+// ────────────────────────────────────────────────────────────────
+// isRateLimitError — inline check in classifier
+// ────────────────────────────────────────────────────────────────
+describe('rate limit detection', () => {
+    // This tests the pattern used inside the classifier's isRateLimitError function
+    function isRateLimitError(error: unknown): boolean {
+        if (error instanceof Error) {
+            const msg = error.message.toLowerCase();
+            return msg.includes('429') || msg.includes('rate limit') || msg.includes('too many requests');
+        }
+        return false;
+    }
+
+    it('detects 429 in error message', () => {
+        expect(isRateLimitError(new Error('HTTP 429 Too Many Requests'))).toBe(true);
+    });
+
+    it('detects rate limit text', () => {
+        expect(isRateLimitError(new Error('Rate limit exceeded'))).toBe(true);
+    });
+
+    it('detects too many requests text', () => {
+        expect(isRateLimitError(new Error('too many requests, please retry'))).toBe(true);
+    });
+
+    it('returns false for other errors', () => {
+        expect(isRateLimitError(new Error('Connection timeout'))).toBe(false);
+    });
+
+    it('returns false for non-Error values', () => {
+        expect(isRateLimitError('429')).toBe(false);
+        expect(isRateLimitError(null)).toBe(false);
     });
 });
