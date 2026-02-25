@@ -10,6 +10,8 @@ server:
   bodyLimitMb: 10
   # Max requests per minute per IP (rate limiting)
   rateLimitPerMinute: 100
+  # Run a quick self-test on startup to verify providers respond
+  selfTest: true
 
 # Your Pharos API key — clients must send this to authenticate
 # Can also be set via PHAROS_API_KEY env var

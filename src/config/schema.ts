@@ -84,6 +84,7 @@ export const ServerConfigSchema = z.object({
     host: z.string().default('0.0.0.0'),
     bodyLimitMb: z.number().positive().default(10),
     rateLimitPerMinute: z.number().int().positive().default(100),
+    selfTest: z.boolean().default(true),
 });
 
 // ─── Router configuration ───
