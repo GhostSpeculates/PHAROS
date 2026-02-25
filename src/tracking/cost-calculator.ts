@@ -36,7 +36,7 @@ const PRICING_DEFAULTS: Record<string, ModelPricing> = {
     // ─── Economical Tier ───
     'deepseek/deepseek-chat': { inputPerMillion: 0.14, outputPerMillion: 0.28 },
     'mistral/mistral-large-latest': { inputPerMillion: 2.0, outputPerMillion: 6.0 },
-    'moonshot/kimi-k2': { inputPerMillion: 0.5, outputPerMillion: 2.5 },
+    'moonshot/kimi-latest': { inputPerMillion: 0.5, outputPerMillion: 2.5 },
     'xai/grok-3-mini-fast': { inputPerMillion: 0.3, outputPerMillion: 0.5 },
 
     // ─── Premium Tier ───

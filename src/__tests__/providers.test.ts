@@ -1242,7 +1242,7 @@ describe('OpenAICompatProvider', () => {
       const provider = new OpenAICompatProvider(
         'moonshot',
         'sk-moon-test',
-        'https://api.moonshot.cn/v1',
+        'https://api.moonshot.ai/v1',
         logger,
       );
       expect(provider.name).toBe('moonshot');

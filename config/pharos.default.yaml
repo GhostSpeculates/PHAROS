@@ -31,7 +31,7 @@ classifier:
     - provider: groq
       model: llama-3.3-70b-versatile
     - provider: moonshot
-      model: kimi-k2
+      model: kimi-latest
     - provider: xai
       model: grok-3-mini-fast
   # Fallback tier if ALL classifier providers fail
@@ -55,7 +55,7 @@ tiers:
       - provider: groq
         model: llama-3.3-70b-versatile
       - provider: moonshot
-        model: kimi-k2
+        model: kimi-latest
       - provider: deepseek
         model: deepseek-chat
       - provider: openai
@@ -118,7 +118,7 @@ providers:
     healthCooldownMs: 60000
   moonshot:
     apiKeyEnv: MOONSHOT_API_KEY
-    baseUrl: https://api.moonshot.cn/v1
+    baseUrl: https://api.moonshot.ai/v1
     timeoutMs: 30000
     healthCooldownMs: 60000
 
@@ -167,7 +167,7 @@ pricing:
     outputCostPerMillion: 40.0
   # ─── Classifier / Economical ───
   - provider: moonshot
-    model: kimi-k2
+    model: kimi-latest
     inputCostPerMillion: 0.50
     outputCostPerMillion: 2.50
   - provider: xai
