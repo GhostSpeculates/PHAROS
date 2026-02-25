@@ -129,47 +129,46 @@ tiers:
   - [x] UFW firewall (SSH only)
   - [x] SSH key-only authentication
 
-#### Production Stats (Feb 22, 2026 — first day of live traffic)
+#### Production Stats (Feb 25, 2026 — cumulative since launch)
 
 | Metric | Value |
 |--------|-------|
-| Total requests processed | 53 |
-| Total cost | $0.2384 |
-| Baseline cost (all-Sonnet) | $0.5197 |
-| **Total savings** | **$0.2813** |
-| **Savings percentage** | **54.1%** |
-| Providers active | 6 (Anthropic, Google, OpenAI, DeepSeek, Groq, xAI) |
-| Provider health | All 6 healthy, 0 consecutive errors |
-| Memory usage | 55 MB (peak 66 MB) |
-| Database size | 36 KB |
-| Errors since hardened deploy | 0 |
-| VPS uptime | 16 days |
+| Total requests processed | 201 |
+| Total cost | $1.9258 |
+| Baseline cost (all-Sonnet) | $7.2421 |
+| **Total savings** | **$5.3163** |
+| **Savings percentage** | **73.4%** |
+| Providers active | 8 (Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot) |
+| Error rate | 0.0% |
+| Classifier providers | Groq (106), unknown (87), Moonshot (7), fallback (1) |
 
 #### Tier Breakdown
 
 | Tier | Requests | Cost | Avg Cost/Req |
 |------|----------|------|-------------|
-| Free | 24 (45%) | $0.1158 | $0.0048 |
-| Economical | 13 (25%) | $0.0008 | $0.0001 |
-| Premium | 6 (11%) | $0.0835 | $0.0139 |
-| Frontier | 10 (19%) | $0.0383 | $0.0038 |
+| Free | 142 (70.6%) | $0.5166 | $0.0036 |
+| Economical | 25 (12.4%) | $0.0115 | $0.0005 |
+| Premium | 24 (11.9%) | $1.3594 | $0.0566 |
+| Frontier | 10 (5.0%) | $0.0383 | $0.0038 |
 
 #### Provider Breakdown
 
-| Provider | Requests | Cost |
-|----------|----------|------|
-| Groq | 22 | $0.0009 |
-| Anthropic | 15 | $0.1120 |
-| DeepSeek | 13 | $0.0008 |
-| Google | 2 | $0.1148 |
-| OpenAI | 1 | $0.0098 |
+| Provider | Requests |
+|----------|----------|
+| Google | 107 |
+| Groq | 38 |
+| Anthropic | 32 |
+| DeepSeek | 16 |
+| Moonshot | 6 |
+| OpenAI | 2 |
 
 #### Key Observations
-- Classifier accuracy is excellent: greetings/simple queries → free tier, moderate analysis → economical, complex code/architecture → premium, PhD-level research → frontier
-- Pre-flight context filtering eliminated the cascade failure where 200K+ token requests bounced through all providers — now routes directly to Gemini Flash (1M context)
-- 54% cost savings even with mixed real-world traffic including large context payloads
-- Zero errors since production hardening deploy
-- Streaming handles client disconnects gracefully — no more `ERR_HTTP_HEADERS_SENT` crashes
+- 73.4% cost savings vs all-Sonnet baseline across 201 real-world requests
+- 70.6% of traffic routes to free tier — classifier accurately identifies simple queries
+- Frontier traffic at 5.0% (down from 6.3% after prompt tuning)
+- Zero errors across entire request history
+- Google (Gemini Flash) handles bulk of free-tier traffic, especially large-context requests
+- Classifier primarily uses Groq (53%), with Moonshot as secondary failover
 
 ### Phase 2: Intelligence Layer
 - [ ] Semantic caching (Redis + embeddings)
