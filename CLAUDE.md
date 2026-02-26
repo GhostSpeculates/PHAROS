@@ -38,6 +38,7 @@ Backward-compatible with legacy single `provider`/`model` format.
 | Classifier | `src/classifier/` | Failover chain scores queries 1-10 + task type |
 | Router | `src/router/` | Score→tier mapping, failover chain |
 | Providers | `src/providers/` | Anthropic, Google, OpenAI-compat adapters |
+| Registry | `src/registry/` | Model metadata catalog (capabilities, pricing, speed) |
 | Gateway | `src/gateway/` | Fastify HTTP routes, auth, request/response schemas |
 | Tracking | `src/tracking/` | SQLite cost recording, savings calculator |
 | Utils | `src/utils/` | Pino logger, ID generators, SSE helpers, context windows |
@@ -45,14 +46,14 @@ Backward-compatible with legacy single `provider`/`model` format.
 
 ### Tier Routing (default config)
 
-- **Free** (score 1-3): Groq Llama 3.3, Gemini Flash
-- **Economical** (score 4-6): Groq Llama 3.3, Kimi Latest, DeepSeek, GPT-4o
+- **Free** (score 1-3): Groq Llama 3.3, Gemini Flash, Together Llama 3.3, Fireworks Llama 3.3
+- **Economical** (score 4-6): Groq Llama 3.3, Kimi Latest, DeepSeek, Together DeepSeek V3, Together Qwen 2.5 72B, Fireworks DeepSeek V3, GPT-4o
 - **Premium** (score 7-8): Claude Sonnet, GPT-4o
 - **Frontier** (score 9-10): Claude Opus, Claude Sonnet (fallback), GPT-4o
 
-### Providers (8 active)
+### Providers (10 active)
 
-Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot
+Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot, Together AI, Fireworks AI
 
 All use the OpenAI-compatible adapter (`src/providers/openai-compat.ts`) except Anthropic (`anthropic.ts`) and Google (`google.ts`) which have native adapters.
 
@@ -144,6 +145,8 @@ src/
 │   ├── anthropic.ts                  # Claude adapter
 │   ├── google.ts                     # Gemini adapter
 │   └── openai-compat.ts             # DeepSeek/Groq/Mistral/OpenAI/Moonshot/xAI
+├── registry/
+│   └── models.ts                     # Model metadata catalog (capabilities, pricing, speed)
 ├── router/
 │   ├── index.ts                      # ModelRouter
 │   ├── tier-resolver.ts              # Score→tier logic
@@ -208,8 +211,8 @@ src/
 
 - **Framework**: Vitest 4
 - **Test files**: `src/__tests__/*.test.ts`
-- **Coverage**: tier-resolver (23), cost-calculator (20), auth middleware (9), ID generators (10), config schema (52), classifier (17), failover (15), tracking-store (30), router (15), context (21), stream (10), providers (118), alerts (26), self-test (15), semaphore (16), lru-cache (10), agent-rate-limit (12), retry (40)
-- **Total**: 918 tests, all passing (459 src + 459 dist)
+- **Coverage**: tier-resolver (23), cost-calculator (25), auth middleware (9), ID generators (10), config schema (52), classifier (17), failover (15), tracking-store (30), router (15), context (26), stream (10), providers (118), alerts (26), self-test (15), semaphore (16), lru-cache (10), agent-rate-limit (12), retry (40), registry (22)
+- **Total**: 982 tests, all passing (491 src + 491 dist)
 - Run: `npm test` or `npm run test:watch`
 
 ## Alerts & Monitoring
@@ -225,10 +228,9 @@ src/
 
 ## Roadmap Status
 
-- **Phase 1 (Core Engine)**: IN PROGRESS — core built and deployed, needs continued hardening
-  - ⚠️ Phase 1 is NOT complete. Do NOT start Phase 2 features until Ghost declares Phase 1 done.
-  - ⚠️ Do NOT change this status line. Only the project owner (Ghost) can declare Phase 1 complete.
-  - Routing, classification, multi-provider (8), failover, tracking, security, 918 tests
+- **Phase 1 (Core Engine)**: ✅ COMPLETE — declared by Ghost on Feb 25, 2026
+  - 982 tests, 73.4% cost savings, 0% error rate, stress tested 35/35, 10 providers
+  - Routing, classification, multi-provider (10), failover, tracking, security, 982 tests
   - Classifier: concurrency semaphore (max 5), LRU cache (30s TTL), 429 fast failover, metrics
   - Classifier failover chain (Moonshot/kimi-latest → Groq → xAI → static fallback/economical)
   - Frontier prompt tightened: 99% of tasks score 1-8, explicit "NOT 9-10" examples
@@ -245,9 +247,9 @@ src/
   - Moonshot: international platform (api.moonshot.ai), model kimi-latest
   - Stress test script: `scripts/stress-test.sh` (35 requests, 3 phases, burst + mixed load)
   - Dockerfile + docker-compose.yml (multi-stage build, non-root, healthcheck, 512MB limit)
-- **Phase 2 (Universal Intelligent Router)**: NOT STARTED — see PRODUCT.md for full blueprint
-  - Multi-platform provider expansion (Together AI, Fireworks, HuggingFace, Cerebras)
-  - Universal model registry with auto-discovery
+- **Phase 2 (Universal Intelligent Router)**: IN PROGRESS — see PRODUCT.md for full blueprint
+  - **Phase 2A**: ✅ Provider expansion — Together AI + Fireworks AI (5 new models)
+  - **Phase 2B**: ✅ Model registry — `src/registry/models.ts` with capabilities, pricing, speed metadata
   - Task-type-aware routing (complexity × task type → optimal model)
   - Performance learning + auto-tuned routing weights
 - **Phase 3 (Dashboard)**: NOT STARTED — web UI, model registry browser, routing visualization
@@ -256,7 +258,7 @@ src/
 ## Production Stats (Feb 25, 2026)
 
 - 201 requests processed, **73.4% savings** vs Sonnet baseline ($1.93 actual vs $7.24 baseline)
-- 8 providers initialized, 6/6 passing self-test
+- 10 providers configured, 6/6 passing self-test (Together + Fireworks pending API keys)
 - 8 agents routing through Pharos (workers direct to Google)
 - Stress tested: 35/35 requests under burst load, 0 failures, 0 misclassifications
 - Discord alerts + ntfy.sh phone notifications live
