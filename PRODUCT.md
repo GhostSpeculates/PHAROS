@@ -34,7 +34,7 @@ Pharos eliminates this tradeoff with real-time intelligent routing.
 - Extended thinking passthrough for Anthropic models
 
 ### Layer 2: Query Classifier
-- Lightweight AI classifier (Groq/Llama 3.3 70B — fast, cheap)
+- Lightweight AI classifier (Moonshot/Kimi — cheap, good quality)
 - Analyzes each incoming message for:
   - **Complexity score** (1-10) with explicit per-score guidelines
   - **Task type** (greeting, lookup, analysis, planning, creative, code, reasoning)
@@ -168,28 +168,79 @@ tiers:
 - Frontier traffic at 5.0% (down from 6.3% after prompt tuning)
 - Zero errors across entire request history
 - Google (Gemini Flash) handles bulk of free-tier traffic, especially large-context requests
-- Classifier primarily uses Groq (53%), with Moonshot as secondary failover
+- Classifier primary switched to Moonshot (separates classifier budget from Groq routing budget)
 
-### Phase 2: Intelligence Layer
-- [ ] Semantic caching (Redis + embeddings)
-- [ ] Conversation-aware routing (inherit tier across conversation)
-- [ ] Channel/context-aware routing (Nex Labs channels get higher default)
-- [ ] Classification accuracy feedback loop
-- [ ] Prompt caching integration (Anthropic, Google)
+### Phase 2: Universal Intelligent Model Router — THE GAME CHANGER
+
+> **Vision**: Pharos becomes the first open-source tool that gives you native access to 300+ AI models across every major platform — and *automatically picks the best one for every query*. No other tool does this. OpenRouter is a dumb proxy. LiteLLM is a dumb proxy. Pharos is the brain.
+
+#### 2A. Multi-Platform Provider Expansion
+- [ ] **Together AI** integration (200+ models — Llama, Mixtral, Qwen, CodeLlama, StripedHyena)
+- [ ] **Fireworks AI** integration (100+ models — fastest open-source inference)
+- [ ] **HuggingFace Inference API** integration (100+ models — largest open-source hub)
+- [ ] **Cerebras** integration (fastest inference hardware — Llama at 2000 tok/s)
+- [ ] **Lambda Labs** integration (research-grade GPU inference)
+- [ ] All use OpenAI-compatible APIs — Pharos already supports the protocol, just needs config + API keys
+- [ ] Single env var per platform: `TOGETHER_API_KEY`, `FIREWORKS_API_KEY`, etc.
+
+#### 2B. Universal Model Registry
+- [ ] **Model database** — every model across every platform with: name, provider(s), context window, strengths, pricing, speed benchmarks
+- [ ] **Auto-discovery** — query each platform's `/v1/models` endpoint on startup to know what's available
+- [ ] **Multi-host awareness** — same model (e.g., Llama 3.3 70B) available on Groq, Together, Fireworks → Pharos picks the cheapest/fastest one that's healthy
+- [ ] **Live pricing sync** — pull current pricing from provider APIs, not hardcoded
+- [ ] **Model capability tags** — code, math, reasoning, creative, multilingual, vision, long-context
+
+#### 2C. Task-Type-Aware Routing (Beyond Complexity Scoring)
+- [ ] Classifier v2: score complexity (1-10) AND classify task type (code, math, reasoning, creative, analysis, conversation)
+- [ ] **Model-task affinity matrix** — which models excel at which tasks:
+  - Code → DeepSeek Coder, CodeLlama, Claude Sonnet
+  - Math → Qwen-Math, Claude, GPT-4o
+  - Reasoning → o1, Claude Opus, Qwen-72B
+  - Creative writing → Claude, Gemini, Llama
+  - Fast conversation → Groq/Llama, Gemini Flash
+  - Multilingual → Qwen, Gemini, GPT-4o
+- [ ] Route by (complexity × task_type) → optimal model, not just cheapest model in tier
+- [ ] User can override: `"model": "pharos-code"` forces code-optimized routing
+
+#### 2D. Intelligent Caching
+- [ ] **Semantic cache** — embed queries, find similar past requests, serve cached responses for near-duplicates
+- [ ] **Conversation-aware routing** — inherit tier across a conversation (don't reclassify every message)
+- [ ] **Prompt caching** — leverage Anthropic and Google's native prompt caching for system prompts
+
+#### 2E. Performance Learning
+- [ ] **Track response quality signals** — latency, token usage, user follow-ups (did they re-ask = bad answer)
+- [ ] **Model leaderboard** — per-task-type success rates: "DeepSeek wins 78% of code tasks, Claude wins 92% of reasoning tasks"
+- [ ] **Auto-tune routing weights** — models that perform well get more traffic, underperformers get deprioritized
+- [ ] **A/B routing** — occasionally route same query to two models, compare results to improve the affinity matrix
+
+#### Why This Is Revolutionary
+
+| Feature | OpenRouter | LiteLLM | RouteLLM | **Pharos v2** |
+|---------|-----------|---------|----------|---------------|
+| Multi-provider access | ✅ | ✅ | ❌ | ✅ |
+| AI-powered model selection | ❌ | ❌ | Binary only | **Task-type aware** |
+| Performance learning | ❌ | ❌ | ❌ | **Auto-tunes** |
+| Same model, best provider | ✅ (cloud) | ❌ | ❌ | **✅ (self-hosted)** |
+| Free / self-hosted | ❌ ($) | ✅ | ✅ | **✅** |
+| Works with 300+ models | ✅ | ✅ (manual) | ❌ | **✅ (native)** |
+| Cost optimization | ❌ | ❌ | Partial | **Full stack** |
 
 ### Phase 3: Dashboard & UX
 - [ ] Web dashboard (React SPA with WebSocket live updates)
-- [ ] Configuration UI (drag-and-drop tier setup)
+- [ ] Model registry browser — search/filter all available models by capability, price, speed
+- [ ] Configuration UI (drag-and-drop tier setup, model affinity tuning)
 - [ ] API key management interface
-- [ ] Weekly email reports (savings summary)
+- [ ] Real-time routing visualization (see decisions as they happen)
+- [ ] Weekly reports (savings, model performance, routing distribution)
 
 ### Phase 4: Product & Distribution
-- [ ] npm package for easy installation
+- [ ] npm package for easy installation (`npx pharos init`)
 - [ ] Docker image for one-command deployment
-- [ ] OpenClaw plugin for native integration
-- [ ] Documentation site
+- [ ] OpenClaw / ElizaOS plugins for native integration
+- [ ] Documentation site with interactive model catalog
 - [ ] Landing page
 - [ ] GitHub release + open source launch
+- [ ] Community model registry contributions (users share routing configs)
 
 ---
 

@@ -15,10 +15,10 @@ HTTP Request → Auth Middleware → Zod Validation → Classifier (failover cha
 ### Classifier Failover Chain
 
 The classifier tries providers in order before falling back to a static tier score:
-1. **Groq** / llama-3.3-70b-versatile (fast, cheap)
-2. **Moonshot** / kimi-latest (cheap, good quality)
-3. **xAI** / grok-3-mini-fast (fast fallback)
-4. **Static fallback** → premium tier midpoint score
+1. **Moonshot** / kimi-latest (primary — separates classifier budget from Groq routing budget)
+2. **Groq** / llama-3.3-70b-versatile (fast fallback)
+3. **xAI** / grok-3-mini-fast (last resort)
+4. **Static fallback** → economical tier midpoint score
 
 Classifier input is truncated to prevent provider context limit failures:
 - System message: first only, capped at 1000 chars
@@ -97,7 +97,7 @@ npm run format     # Prettier
 - User overrides: `pharos.yaml` in project root (gitignored)
 - Environment: `.env` (copy from `.env.example`)
 - Config merge order: defaults → user YAML → env vars
-- Required env vars: at minimum `GROQ_API_KEY` (powers classifier + free tier)
+- Required env vars: at minimum `MOONSHOT_API_KEY` (powers classifier) + `GROQ_API_KEY` (free tier routing)
 
 ## Deployment
 
@@ -190,7 +190,7 @@ src/
 
 - Server listens on port 3777 by default
 - SQLite DB stored at `data/pharos.db` (gitignored), auto-migrates new columns
-- Classifier failover chain: Groq → Moonshot (kimi-latest) → xAI → static fallback score
+- Classifier failover chain: Moonshot (kimi-latest) → Groq → xAI → static fallback score
 - Fallback scores derived from tier config midpoints (not hardcoded)
 - Provider health tracking: 3 consecutive errors → provider marked unhealthy (configurable cooldown)
 - Context-size errors don't damage provider health (undoLastError)
@@ -227,7 +227,7 @@ src/
   - ⚠️ Do NOT change this status line. Only the project owner (Ghost) can declare Phase 1 complete.
   - Routing, classification, multi-provider (8), failover, tracking, security, 772 tests
   - Classifier: concurrency semaphore (max 5), LRU cache (30s TTL), 429 fast failover, metrics
-  - Classifier failover chain (Groq → Moonshot/kimi-latest → xAI → static fallback/economical)
+  - Classifier failover chain (Moonshot/kimi-latest → Groq → xAI → static fallback/economical)
   - Frontier prompt tightened: 99% of tasks score 1-8, explicit "NOT 9-10" examples
   - Discord alerts + ntfy.sh phone push (critical only) + startup self-test
   - Error tracking in SQLite (status + error_message columns)
@@ -236,15 +236,22 @@ src/
   - Google multimodal fix (array content handling)
   - Moonshot: international platform (api.moonshot.ai), model kimi-latest
   - Stress test script: `scripts/stress-test.sh` (35 requests, 3 phases, burst + mixed load)
-- **Phase 2 (Intelligence)**: NOT STARTED — semantic caching, conversation-aware routing, prompt caching
-- **Phase 3 (Dashboard)**: NOT STARTED — web UI (React SPA), config UI, real-time feed
-- **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker, docs site
+  - Dockerfile + docker-compose.yml (multi-stage build, non-root, healthcheck, 512MB limit)
+- **Phase 2 (Universal Intelligent Router)**: NOT STARTED — see PRODUCT.md for full blueprint
+  - Multi-platform provider expansion (Together AI, Fireworks, HuggingFace, Cerebras)
+  - Universal model registry with auto-discovery
+  - Task-type-aware routing (complexity × task type → optimal model)
+  - Performance learning + auto-tuned routing weights
+- **Phase 3 (Dashboard)**: NOT STARTED — web UI, model registry browser, routing visualization
+- **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker Hub, docs site, community registry
 
-## Production Stats (Feb 24, 2026)
+## Production Stats (Feb 25, 2026)
 
-- 150+ requests processed, **66% savings** vs Sonnet baseline
+- 201 requests processed, **73.4% savings** vs Sonnet baseline ($1.93 actual vs $7.24 baseline)
 - 8 providers initialized, 6/6 passing self-test
+- 8 agents routing through Pharos (workers direct to Google)
 - Stress tested: 35/35 requests under burst load, 0 failures, 0 misclassifications
 - Discord alerts + ntfy.sh phone notifications live
 - Classifier metrics: cache hits, rate limit tracking, provider distribution
+- ⚠️ Groq hitting 100K token/day free tier limit — failover handles it, 0% error rate
 - Memory: ~44MB, all providers healthy

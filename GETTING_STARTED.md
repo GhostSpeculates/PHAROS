@@ -95,11 +95,13 @@ providers:
 # Change classifier chain
 classifier:
   providers:
+    - provider: moonshot
+      model: kimi-latest
     - provider: groq
       model: llama-3.3-70b-versatile
     - provider: xai
       model: grok-3-mini-fast
-  fallbackTier: premium
+  fallbackTier: economical
   timeoutMs: 5000
 ```
 
@@ -337,8 +339,8 @@ curl -X POST http://localhost:3777/v1/chat/completions \
 
 ### Queries always route to the same tier
 
-- Classifier needs `GROQ_API_KEY`. Without it, everything falls back to premium.
-- Failover chain: Groq -> Moonshot -> xAI -> static premium score.
+- Classifier needs `MOONSHOT_API_KEY`. Without it, falls back to Groq, then xAI, then static score.
+- Failover chain: Moonshot -> Groq -> xAI -> static economical score.
 - Check logs for "classification failed" messages.
 
 ### Request timeouts
