@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { PharosConfig } from '../config/schema.js';
+import type { PharosConfig, TierName } from '../config/schema.js';
 import type { QueryClassifier } from '../classifier/index.js';
 import type { ModelRouter, RoutingDecision } from '../router/index.js';
 import type { ProviderRegistry } from '../providers/index.js';
@@ -17,6 +17,7 @@ import { findModel } from '../registry/models.js';
 import { estimateTokens, getContextWindow, isContextSizeError } from '../utils/context.js';
 import { isTransientError, calculateBackoffMs, sleep } from '../utils/retry.js';
 import { sendAlert } from '../utils/alerts.js';
+import { ConversationTracker, applyTierFloor } from '../router/conversation-tracker.js';
 
 /**
  * Register all API routes on the Fastify server.
@@ -32,6 +33,7 @@ export function registerRoutes(
     registry: ProviderRegistry,
     tracker: TrackingStore | null,
     logger: Logger,
+    conversationTracker?: ConversationTracker,
 ): void {
     const authMiddleware = createAuthMiddleware(config);
     const agentRateLimiter = createAgentRateLimiter(config.server.agentRateLimitPerMinute, logger);
@@ -325,6 +327,11 @@ ${recentRows}
             : generateRequestId();
         const completionId = generateCompletionId();
 
+        // Extract conversation ID for tier floor tracking
+        const conversationId = typeof request.headers['x-conversation-id'] === 'string'
+            ? request.headers['x-conversation-id'].trim() || null
+            : null;
+
         // 1. Validate the request
         const parseResult = ChatCompletionRequestSchema.safeParse(request.body);
         if (!parseResult.success) {
@@ -405,6 +412,7 @@ ${recentRows}
         // Track classification + routing for error reporting (hoisted for catch block access)
         let classification: Awaited<ReturnType<typeof classifier.classify>> | undefined;
         let routing: RoutingDecision | undefined;
+        let conversationTierFloor: string | undefined;
 
         try {
             // 2. Classify the query
@@ -437,6 +445,32 @@ ${recentRows}
             } else {
                 // Normal routing via classifier (with affinity)
                 routing = router.route(classification);
+
+                // Apply conversation tier floor — prevent quality drops in multi-turn conversations
+                if (conversationId && conversationTracker && config.conversation?.enabled) {
+                    const floor = conversationTracker.getTierFloor(conversationId);
+                    if (floor) {
+                        const elevatedTier = applyTierFloor(routing.tier as TierName, floor);
+                        if (elevatedTier !== routing.tier) {
+                            // Re-route with elevated tier by using that tier's minimum score
+                            const elevatedScore = config.tiers[elevatedTier].scoreRange[0];
+                            const elevatedClassification = { ...classification, score: elevatedScore };
+                            routing = router.route(elevatedClassification);
+                            conversationTierFloor = floor;
+                            logger.info(
+                                {
+                                    requestId,
+                                    originalTier: routing.tier,
+                                    elevatedTier,
+                                    floor,
+                                    originalScore: classification.score,
+                                    elevatedScore,
+                                },
+                                'Conversation tier floor applied',
+                            );
+                        }
+                    }
+                }
             }
 
             logger.info(
@@ -555,6 +589,9 @@ ${recentRows}
                                     if (retryCount > 0) {
                                         reply.raw.setHeader('X-Pharos-Retries', String(retryCount));
                                     }
+                                    if (conversationTierFloor) {
+                                        reply.raw.setHeader('X-Pharos-Conversation-Tier', conversationTierFloor);
+                                    }
                                     initSSEHeaders(reply);
                                     headersSent = true;
                                 }
@@ -596,6 +633,11 @@ ${recentRows}
                                 Date.now() - requestStartTime, true, userMessagePreview,
                                 undefined, { debugInput },
                             );
+
+                            // Record conversation tier for future tier floor calculations
+                            if (conversationId && conversationTracker && config.conversation?.enabled) {
+                                conversationTracker.recordTier(conversationId, candidate.tier as TierName);
+                            }
 
                             const cost = calculateCost(candidate.provider, candidate.model, finalUsage.promptTokens, finalUsage.completionTokens);
                             logger.info(
@@ -762,6 +804,11 @@ ${recentRows}
                 undefined, { debugInput, debugOutput },
             );
 
+            // Record conversation tier for future tier floor calculations
+            if (conversationId && conversationTracker && config.conversation?.enabled) {
+                conversationTracker.recordTier(conversationId, usedTier as TierName);
+            }
+
             logger.info(
                 {
                     requestId,
@@ -785,6 +832,9 @@ ${recentRows}
             reply.header('X-Pharos-Request-Id', requestId);
             if (retryCount > 0) {
                 reply.header('X-Pharos-Retries', String(retryCount));
+            }
+            if (conversationTierFloor) {
+                reply.header('X-Pharos-Conversation-Tier', conversationTierFloor);
             }
 
             return buildChatCompletionResponse({

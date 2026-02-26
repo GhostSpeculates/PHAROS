@@ -12,6 +12,7 @@ import { createLogger, type Logger } from './utils/logger.js';
 import { initPricing } from './tracking/cost-calculator.js';
 import { initAlerts, sendAlert } from './utils/alerts.js';
 import { providerSelfTest } from './utils/self-test.js';
+import { ConversationTracker } from './router/conversation-tracker.js';
 
 /**
  * Create and configure the Pharos server.
@@ -47,6 +48,17 @@ export async function createServer(config: PharosConfig): Promise<{
     // ─── Initialize Router ───
     const router = new ModelRouter(config, registry, logger);
 
+    // ─── Initialize Conversation Tracker ───
+    const conversationTracker = config.conversation?.enabled
+        ? new ConversationTracker({
+            maxSize: config.conversation.maxConversations,
+            ttlMs: config.conversation.conversationTtlMs,
+        })
+        : undefined;
+    if (conversationTracker) {
+        logger.info('Conversation tracking: enabled');
+    }
+
     // ─── Initialize Tracking ───
     let tracker: TrackingStore | null = null;
     if (config.tracking.enabled) {
@@ -80,7 +92,7 @@ export async function createServer(config: PharosConfig): Promise<{
     app.setErrorHandler(createErrorHandler(logger));
 
     // Register routes
-    registerRoutes(app, config, classifier, router, registry, tracker, logger);
+    registerRoutes(app, config, classifier, router, registry, tracker, logger, conversationTracker);
 
     // ─── Server lifecycle ───
     return {

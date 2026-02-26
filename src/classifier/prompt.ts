@@ -137,6 +137,15 @@ export function buildClassificationInput(
         parts.push(`[USER]: ${truncate(text, MAX_PER_MESSAGE)}`);
     }
 
+    // Add multi-turn context hint for conversations with history
+    if (messages.length > 2) {
+        parts.push(
+            '[CONTEXT]: This is a multi-turn conversation with ' +
+                messages.length +
+                ' messages. Consider the complexity of the FULL conversation, not just the last message.',
+        );
+    }
+
     const combined = parts.join('\n\n');
 
     // Final safety cap

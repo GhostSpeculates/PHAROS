@@ -253,6 +253,13 @@ spending:
   dailyLimit: null
   monthlyLimit: null
 
+# Conversation-aware routing — prevents quality drops in multi-turn conversations
+# When a premium model is used, follow-up messages get a tier floor (one below peak)
+conversation:
+  enabled: true
+  maxConversations: 500
+  conversationTtlMs: 1800000
+
 # Cost tracking
 tracking:
   enabled: true
