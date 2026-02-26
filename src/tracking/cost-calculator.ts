@@ -29,7 +29,7 @@ let pricingLogger: Logger | null = null;
 // Hardcoded defaults — used as fallback when config doesn't specify pricing
 const PRICING_DEFAULTS: Record<string, ModelPricing> = {
     // ─── Free Tier ───
-    // Groq: free at low volume (free tier covers Pharos usage)
+    // Groq: free at low volume — routing only (classifier moved to Moonshot), free tier lasts longer
     // Google Gemini Flash: free via Gemini Developer API free tier (rate-limited, no per-token charge)
     // If self-hosting at high volume, override via config pricing section
     'google/gemini-2.0-flash': { inputPerMillion: 0, outputPerMillion: 0 },

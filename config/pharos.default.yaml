@@ -27,11 +27,12 @@ router:
 # Supports any OpenAI-compatible provider (groq, xai, deepseek, openai, etc.)
 classifier:
   # Classifier providers tried in order (failover chain)
+  # Moonshot is primary — separates classifier token budget from Groq's routing budget
   providers:
-    - provider: groq
-      model: llama-3.3-70b-versatile
     - provider: moonshot
       model: kimi-latest
+    - provider: groq
+      model: llama-3.3-70b-versatile
     - provider: xai
       model: grok-3-mini-fast
   # Fallback tier if ALL classifier providers fail
@@ -133,6 +134,7 @@ providers:
 #
 # Free tier models: Groq and Google Gemini Flash are priced at $0 because
 # their free API tiers cover Pharos usage at typical volumes.
+# Groq is routing-only (classifier moved to Moonshot), so free tier lasts longer.
 # Groq paid rate: $0.59/$0.79, Google paid rate: $0.30/$2.50 (standard API)
 # If you exceed free tier limits, update these entries to reflect actual costs.
 pricing:
@@ -176,7 +178,7 @@ pricing:
     model: o3
     inputCostPerMillion: 10.0
     outputCostPerMillion: 40.0
-  # ─── Classifier / Economical ───
+  # ─── Classifier (primary) / Economical ───
   - provider: moonshot
     model: kimi-latest
     inputCostPerMillion: 0.50

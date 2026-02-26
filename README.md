@@ -51,7 +51,7 @@ Your App  -->  Pharos Gateway  -->  Query Classifier  -->  Optimal Model
 ```
 
 1. **Drop-in replacement**: Pharos exposes an OpenAI-compatible API. Change one URL and you are routed.
-2. **Real-time classification**: A lightweight classifier (runs on Groq Llama 3.3 70B) scores query complexity (1-10) with a failover chain (Groq --> Kimi --> xAI --> static fallback).
+2. **Real-time classification**: A lightweight classifier (runs on Moonshot/Kimi) scores query complexity (1-10) with a failover chain (Moonshot --> Groq --> xAI --> static fallback).
 3. **Smart routing**: Based on the score, Pharos routes to the cheapest model that can handle the query well.
 4. **Automatic failover**: If a provider is down, Pharos cascades to the next available model in the tier.
 5. **Full observability**: Live dashboard showing costs, model usage, savings, and provider health.
@@ -63,7 +63,7 @@ Your App  -->  Pharos Gateway  -->  Query Classifier  -->  Optimal Model
 - **8 providers** — Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot
 - **Tiered model pools** — 4 tiers with configurable score ranges and model lists
 - **Automatic failover** — Provider down? Seamless cascade to the next best option
-- **Classifier failover chain** — Groq --> Kimi --> xAI --> static fallback
+- **Classifier failover chain** — Moonshot --> Groq --> xAI --> static fallback
 - **Cost dashboard** — See exactly how much Pharos saved you (live at `/`)
 - **Context-size-aware routing** — Pre-flight filtering skips providers that cannot handle large requests
 - **Extended thinking passthrough** — Anthropic extended thinking works transparently
