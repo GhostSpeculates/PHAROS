@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Generate an OpenAI-style completion ID.
@@ -9,8 +10,9 @@ export function generateCompletionId(): string {
 }
 
 /**
- * Generate a unique request ID for internal tracking.
+ * Generate a unique request ID (UUID v4) for internal tracking.
+ * If the client provides an X-Request-Id header, that should be used instead.
  */
 export function generateRequestId(): string {
-    return `req-${nanoid(16)}`;
+    return randomUUID();
 }

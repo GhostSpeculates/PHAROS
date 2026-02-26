@@ -82,6 +82,21 @@ function applyEnvOverrides(config: Record<string, unknown>): void {
         ensureNested(config, 'alerts');
         (config.alerts as Record<string, unknown>).ntfyTopic = process.env.PHAROS_NTFY_TOPIC;
     }
+
+    if (process.env.PHAROS_DAILY_LIMIT) {
+        ensureNested(config, 'spending');
+        (config.spending as Record<string, unknown>).dailyLimit = parseFloat(process.env.PHAROS_DAILY_LIMIT);
+    }
+
+    if (process.env.PHAROS_MONTHLY_LIMIT) {
+        ensureNested(config, 'spending');
+        (config.spending as Record<string, unknown>).monthlyLimit = parseFloat(process.env.PHAROS_MONTHLY_LIMIT);
+    }
+
+    if (process.env.PHAROS_DEBUG_LOGGING) {
+        ensureNested(config, 'server');
+        (config.server as Record<string, unknown>).debugLogging = process.env.PHAROS_DEBUG_LOGGING === 'true';
+    }
 }
 
 /**

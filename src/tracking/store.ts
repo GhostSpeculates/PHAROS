@@ -71,6 +71,12 @@ export class TrackingStore {
         if (!columnNames.has('error_message')) {
             this.db.exec('ALTER TABLE requests ADD COLUMN error_message TEXT');
         }
+        if (!columnNames.has('debug_input')) {
+            this.db.exec('ALTER TABLE requests ADD COLUMN debug_input TEXT');
+        }
+        if (!columnNames.has('debug_output')) {
+            this.db.exec('ALTER TABLE requests ADD COLUMN debug_output TEXT');
+        }
 
         // Index on classifier_provider — must run after migration adds the column
         this.db.exec('CREATE INDEX IF NOT EXISTS idx_requests_classifier_provider ON requests(classifier_provider)');
@@ -83,14 +89,14 @@ export class TrackingStore {
         classifier_provider,
         tokens_in, tokens_out, estimated_cost, baseline_cost, savings,
         total_latency_ms, stream, is_direct_route, user_message_preview,
-        status, error_message
+        status, error_message, debug_input, debug_output
       ) VALUES (
         @id, @timestamp, @tier, @provider, @model,
         @classificationScore, @classificationType, @classificationLatencyMs,
         @classifierProvider,
         @tokensIn, @tokensOut, @estimatedCost, @baselineCost, @savings,
         @totalLatencyMs, @stream, @isDirectRoute, @userMessagePreview,
-        @status, @errorMessage
+        @status, @errorMessage, @debugInput, @debugOutput
       )
     `);
 
@@ -133,6 +139,8 @@ export class TrackingStore {
                 userMessagePreview: record.userMessagePreview ?? null,
                 status: record.status ?? 'success',
                 errorMessage: record.errorMessage ?? null,
+                debugInput: record.debugInput ?? null,
+                debugOutput: record.debugOutput ?? null,
             });
         } catch (error) {
             this.logger.error({ error }, 'Failed to record request');
@@ -242,6 +250,28 @@ export class TrackingStore {
             status: r.status ?? 'success',
             errorMessage: r.error_message ?? null,
         }));
+    }
+
+    /**
+     * Get total spending for today (UTC).
+     */
+    getDailySpend(): number {
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const row = this.db
+            .prepare('SELECT COALESCE(SUM(estimated_cost), 0) as total FROM requests WHERE timestamp >= ?')
+            .get(`${today}T00:00:00.000Z`) as { total: number };
+        return row.total;
+    }
+
+    /**
+     * Get total spending for the current month (UTC).
+     */
+    getMonthlySpend(): number {
+        const monthStart = new Date().toISOString().slice(0, 7) + '-01'; // YYYY-MM-01
+        const row = this.db
+            .prepare('SELECT COALESCE(SUM(estimated_cost), 0) as total FROM requests WHERE timestamp >= ?')
+            .get(`${monthStart}T00:00:00.000Z`) as { total: number };
+        return row.total;
     }
 
     /**

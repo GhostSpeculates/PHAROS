@@ -23,6 +23,8 @@ export interface RequestRecord {
     userMessagePreview?: string;
     status?: 'success' | 'error';
     errorMessage?: string;
+    debugInput?: string;
+    debugOutput?: string;
 }
 
 export interface CostSummary {

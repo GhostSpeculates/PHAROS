@@ -10,6 +10,7 @@ import {
     ServerConfigSchema,
     AuthConfigSchema,
     LoggingConfigSchema,
+    SpendingConfigSchema,
 } from '../config/schema.js';
 
 // ────────────────────────────────────────────────────────────────
@@ -385,6 +386,131 @@ describe('TrackingConfigSchema', () => {
             expect(result.data.baselineModel).toBe('claude-sonnet-4-20250514');
             expect(result.data.baselineCostPerMillionInput).toBe(3.0);
             expect(result.data.baselineCostPerMillionOutput).toBe(15.0);
+        }
+    });
+});
+
+// ────────────────────────────────────────────────────────────────
+// ServerConfigSchema — new fields
+// ────────────────────────────────────────────────────────────────
+describe('ServerConfigSchema — new fields', () => {
+    it('defaults agentRateLimitPerMinute to 30', () => {
+        const result = ServerConfigSchema.safeParse({});
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.agentRateLimitPerMinute).toBe(30);
+        }
+    });
+
+    it('accepts custom agentRateLimitPerMinute', () => {
+        const result = ServerConfigSchema.safeParse({ agentRateLimitPerMinute: 60 });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.agentRateLimitPerMinute).toBe(60);
+        }
+    });
+
+    it('rejects non-positive agentRateLimitPerMinute', () => {
+        expect(ServerConfigSchema.safeParse({ agentRateLimitPerMinute: 0 }).success).toBe(false);
+        expect(ServerConfigSchema.safeParse({ agentRateLimitPerMinute: -1 }).success).toBe(false);
+    });
+
+    it('defaults debugLogging to false', () => {
+        const result = ServerConfigSchema.safeParse({});
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.debugLogging).toBe(false);
+        }
+    });
+
+    it('accepts debugLogging true', () => {
+        const result = ServerConfigSchema.safeParse({ debugLogging: true });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.debugLogging).toBe(true);
+        }
+    });
+});
+
+// ────────────────────────────────────────────────────────────────
+// SpendingConfigSchema
+// ────────────────────────────────────────────────────────────────
+describe('SpendingConfigSchema', () => {
+    it('defaults both limits to null', () => {
+        const result = SpendingConfigSchema.safeParse({});
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.dailyLimit).toBeNull();
+            expect(result.data.monthlyLimit).toBeNull();
+        }
+    });
+
+    it('accepts positive daily limit', () => {
+        const result = SpendingConfigSchema.safeParse({ dailyLimit: 5.0 });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.dailyLimit).toBe(5.0);
+        }
+    });
+
+    it('accepts positive monthly limit', () => {
+        const result = SpendingConfigSchema.safeParse({ monthlyLimit: 100.0 });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.monthlyLimit).toBe(100.0);
+        }
+    });
+
+    it('accepts both limits set', () => {
+        const result = SpendingConfigSchema.safeParse({ dailyLimit: 5.0, monthlyLimit: 100.0 });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.dailyLimit).toBe(5.0);
+            expect(result.data.monthlyLimit).toBe(100.0);
+        }
+    });
+
+    it('accepts null limits explicitly', () => {
+        const result = SpendingConfigSchema.safeParse({ dailyLimit: null, monthlyLimit: null });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.dailyLimit).toBeNull();
+            expect(result.data.monthlyLimit).toBeNull();
+        }
+    });
+
+    it('rejects zero daily limit', () => {
+        const result = SpendingConfigSchema.safeParse({ dailyLimit: 0 });
+        expect(result.success).toBe(false);
+    });
+
+    it('rejects negative monthly limit', () => {
+        const result = SpendingConfigSchema.safeParse({ monthlyLimit: -10 });
+        expect(result.success).toBe(false);
+    });
+});
+
+// ────────────────────────────────────────────────────────────────
+// PharosConfigSchema — spending integration
+// ────────────────────────────────────────────────────────────────
+describe('PharosConfigSchema — spending', () => {
+    it('includes spending with defaults in full config', () => {
+        const result = PharosConfigSchema.safeParse({});
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.spending.dailyLimit).toBeNull();
+            expect(result.data.spending.monthlyLimit).toBeNull();
+        }
+    });
+
+    it('accepts spending limits in full config', () => {
+        const result = PharosConfigSchema.safeParse({
+            spending: { dailyLimit: 10.0, monthlyLimit: 200.0 },
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.spending.dailyLimit).toBe(10.0);
+            expect(result.data.spending.monthlyLimit).toBe(200.0);
         }
     });
 });
