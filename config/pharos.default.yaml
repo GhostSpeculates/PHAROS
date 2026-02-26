@@ -59,6 +59,10 @@ tiers:
         model: llama-3.3-70b-versatile
       - provider: google
         model: gemini-2.5-flash
+      - provider: together
+        model: meta-llama/Llama-3.3-70B-Instruct-Turbo
+      - provider: fireworks
+        model: accounts/fireworks/models/llama-v3p3-70b-instruct
 
   economical:
     scoreRange: [4, 6]
@@ -69,6 +73,12 @@ tiers:
         model: kimi-latest
       - provider: deepseek
         model: deepseek-chat
+      - provider: together
+        model: deepseek-ai/DeepSeek-V3
+      - provider: together
+        model: Qwen/Qwen2.5-72B-Instruct-Turbo
+      - provider: fireworks
+        model: accounts/fireworks/models/deepseek-v3
       - provider: openai
         model: gpt-4o
       # - provider: mistral
@@ -132,6 +142,16 @@ providers:
     baseUrl: https://api.moonshot.ai/v1
     timeoutMs: 30000
     healthCooldownMs: 60000
+  together:
+    apiKeyEnv: TOGETHER_API_KEY
+    baseUrl: https://api.together.xyz/v1
+    timeoutMs: 30000
+    healthCooldownMs: 60000
+  fireworks:
+    apiKeyEnv: FIREWORKS_API_KEY
+    baseUrl: https://api.fireworks.ai/inference/v1
+    timeoutMs: 30000
+    healthCooldownMs: 60000
 
 # Model pricing — cost per million tokens (input/output)
 # These override the hardcoded defaults in the cost calculator
@@ -191,6 +211,28 @@ pricing:
     model: grok-3-mini-fast
     inputCostPerMillion: 0.30
     outputCostPerMillion: 0.50
+  # ─── Together AI ───
+  - provider: together
+    model: meta-llama/Llama-3.3-70B-Instruct-Turbo
+    inputCostPerMillion: 0.88
+    outputCostPerMillion: 0.88
+  - provider: together
+    model: deepseek-ai/DeepSeek-V3
+    inputCostPerMillion: 0.50
+    outputCostPerMillion: 0.90
+  - provider: together
+    model: Qwen/Qwen2.5-72B-Instruct-Turbo
+    inputCostPerMillion: 0.60
+    outputCostPerMillion: 0.60
+  # ─── Fireworks AI ───
+  - provider: fireworks
+    model: accounts/fireworks/models/llama-v3p3-70b-instruct
+    inputCostPerMillion: 0.90
+    outputCostPerMillion: 0.90
+  - provider: fireworks
+    model: accounts/fireworks/models/deepseek-v3
+    inputCostPerMillion: 0.50
+    outputCostPerMillion: 1.40
 
 # Spending limits — set to null (or omit) to disable
 # Alerts fire at 80% and 100% of each limit

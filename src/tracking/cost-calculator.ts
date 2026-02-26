@@ -42,6 +42,15 @@ const PRICING_DEFAULTS: Record<string, ModelPricing> = {
     'moonshot/kimi-latest': { inputPerMillion: 0.5, outputPerMillion: 2.5 },
     'xai/grok-3-mini-fast': { inputPerMillion: 0.3, outputPerMillion: 0.5 },
 
+    // ─── Together AI ───
+    'together/meta-llama/Llama-3.3-70B-Instruct-Turbo': { inputPerMillion: 0.88, outputPerMillion: 0.88 },
+    'together/deepseek-ai/DeepSeek-V3': { inputPerMillion: 0.50, outputPerMillion: 0.90 },
+    'together/Qwen/Qwen2.5-72B-Instruct-Turbo': { inputPerMillion: 0.60, outputPerMillion: 0.60 },
+
+    // ─── Fireworks AI ───
+    'fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct': { inputPerMillion: 0.90, outputPerMillion: 0.90 },
+    'fireworks/accounts/fireworks/models/deepseek-v3': { inputPerMillion: 0.50, outputPerMillion: 1.40 },
+
     // ─── Premium Tier ───
     'anthropic/claude-sonnet-4-20250514': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
     'openai/gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },

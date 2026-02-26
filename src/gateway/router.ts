@@ -13,6 +13,7 @@ import { generateCompletionId, generateRequestId } from '../utils/id.js';
 import { initSSEHeaders, sendSSEChunk, sendSSEDone, isClientConnected } from '../utils/stream.js';
 import { createAuthMiddleware } from './middleware/auth.js';
 import { createAgentRateLimiter } from './middleware/agent-rate-limit.js';
+import { findModel } from '../registry/models.js';
 import { estimateTokens, getContextWindow, isContextSizeError } from '../utils/context.js';
 import { isTransientError, calculateBackoffMs, sleep } from '../utils/retry.js';
 import { sendAlert } from '../utils/alerts.js';
@@ -226,24 +227,59 @@ ${recentRows}
     // ─── List Models ───
     app.get('/v1/models', { preHandler: authMiddleware }, async () => {
         const models: object[] = [];
+        const seen = new Set<string>();
+        const created = Math.floor(Date.now() / 1000);
 
         // Add pharos-auto as the primary model
         models.push({
             id: 'pharos-auto',
             object: 'model',
-            created: Math.floor(Date.now() / 1000),
+            created,
             owned_by: 'pharos',
+            pharos: {
+                provider: 'pharos',
+                displayName: 'Pharos Auto-Router',
+                tier: 'auto',
+                contextWindow: null,
+                capabilities: ['code', 'math', 'reasoning', 'creative', 'conversation', 'multilingual'],
+                pricing: null,
+                speed: null,
+            },
         });
 
-        // Add all configured models
+        // Add all configured models (deduplicated across tiers)
         for (const [tierName, tierConfig] of Object.entries(config.tiers)) {
             for (const modelEntry of tierConfig.models) {
+                const key = `${modelEntry.provider}/${modelEntry.model}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+
                 if (registry.isAvailable(modelEntry.provider)) {
+                    const registryEntry = findModel(modelEntry.provider, modelEntry.model);
                     models.push({
                         id: modelEntry.model,
                         object: 'model',
-                        created: Math.floor(Date.now() / 1000),
+                        created,
                         owned_by: `pharos-${tierName}`,
+                        pharos: registryEntry
+                            ? {
+                                provider: registryEntry.provider,
+                                displayName: registryEntry.displayName,
+                                tier: tierName,
+                                contextWindow: registryEntry.contextWindow,
+                                capabilities: registryEntry.capabilities,
+                                pricing: registryEntry.pricing,
+                                speed: registryEntry.speed,
+                            }
+                            : {
+                                provider: modelEntry.provider,
+                                displayName: modelEntry.model,
+                                tier: tierName,
+                                contextWindow: null,
+                                capabilities: [],
+                                pricing: null,
+                                speed: null,
+                            },
                     });
                 }
             }

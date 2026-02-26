@@ -28,6 +28,13 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
     'grok-3-mini-fast': 131_072,
     // Moonshot
     'kimi-latest': 131_072,
+    // Together AI
+    'meta-llama/Llama-3.3-70B-Instruct-Turbo': 128_000,
+    'deepseek-ai/DeepSeek-V3': 131_072,
+    'Qwen/Qwen2.5-72B-Instruct-Turbo': 131_072,
+    // Fireworks AI
+    'accounts/fireworks/models/llama-v3p3-70b-instruct': 128_000,
+    'accounts/fireworks/models/deepseek-v3': 131_072,
 };
 
 /** Default context window when model isn't in the map. */

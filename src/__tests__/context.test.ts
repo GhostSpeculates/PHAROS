@@ -28,6 +28,28 @@ describe('getContextWindow', () => {
     it('returns known context window for kimi-latest', () => {
         expect(getContextWindow('kimi-latest')).toBe(131_072);
     });
+
+    // Together AI
+    it('returns known context window for Together Llama 3.3 70B', () => {
+        expect(getContextWindow('meta-llama/Llama-3.3-70B-Instruct-Turbo')).toBe(128_000);
+    });
+
+    it('returns known context window for Together DeepSeek V3', () => {
+        expect(getContextWindow('deepseek-ai/DeepSeek-V3')).toBe(131_072);
+    });
+
+    it('returns known context window for Together Qwen 2.5 72B', () => {
+        expect(getContextWindow('Qwen/Qwen2.5-72B-Instruct-Turbo')).toBe(131_072);
+    });
+
+    // Fireworks AI
+    it('returns known context window for Fireworks Llama 3.3 70B', () => {
+        expect(getContextWindow('accounts/fireworks/models/llama-v3p3-70b-instruct')).toBe(128_000);
+    });
+
+    it('returns known context window for Fireworks DeepSeek V3', () => {
+        expect(getContextWindow('accounts/fireworks/models/deepseek-v3')).toBe(131_072);
+    });
 });
 
 // ─── estimateTokens ──────────────────────────────────────

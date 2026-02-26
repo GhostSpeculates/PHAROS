@@ -45,6 +45,38 @@ describe('calculateCost', () => {
             const cost = calculateCost('openai', 'o3', 1_000_000, 1_000_000);
             expect(cost).toBeCloseTo(10.0 + 40.0, 6);
         });
+
+        // Together AI
+        it('calculates Together Llama 3.3 70B cost correctly', () => {
+            // 1M input ($0.88) + 1M output ($0.88)
+            const cost = calculateCost('together', 'meta-llama/Llama-3.3-70B-Instruct-Turbo', 1_000_000, 1_000_000);
+            expect(cost).toBeCloseTo(0.88 + 0.88, 6);
+        });
+
+        it('calculates Together DeepSeek V3 cost correctly', () => {
+            // 1M input ($0.50) + 1M output ($0.90)
+            const cost = calculateCost('together', 'deepseek-ai/DeepSeek-V3', 1_000_000, 1_000_000);
+            expect(cost).toBeCloseTo(0.50 + 0.90, 6);
+        });
+
+        it('calculates Together Qwen 2.5 72B cost correctly', () => {
+            // 1M input ($0.60) + 1M output ($0.60)
+            const cost = calculateCost('together', 'Qwen/Qwen2.5-72B-Instruct-Turbo', 1_000_000, 1_000_000);
+            expect(cost).toBeCloseTo(0.60 + 0.60, 6);
+        });
+
+        // Fireworks AI
+        it('calculates Fireworks Llama 3.3 70B cost correctly', () => {
+            // 1M input ($0.90) + 1M output ($0.90)
+            const cost = calculateCost('fireworks', 'accounts/fireworks/models/llama-v3p3-70b-instruct', 1_000_000, 1_000_000);
+            expect(cost).toBeCloseTo(0.90 + 0.90, 6);
+        });
+
+        it('calculates Fireworks DeepSeek V3 cost correctly', () => {
+            // 1M input ($0.50) + 1M output ($1.40)
+            const cost = calculateCost('fireworks', 'accounts/fireworks/models/deepseek-v3', 1_000_000, 1_000_000);
+            expect(cost).toBeCloseTo(0.50 + 1.40, 6);
+        });
     });
 
     describe('zero tokens', () => {
