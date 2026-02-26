@@ -12,7 +12,10 @@ import { calculateCost, calculateBaselineCost } from '../tracking/cost-calculato
 import { generateCompletionId, generateRequestId } from '../utils/id.js';
 import { initSSEHeaders, sendSSEChunk, sendSSEDone, isClientConnected } from '../utils/stream.js';
 import { createAuthMiddleware } from './middleware/auth.js';
+import { createAgentRateLimiter } from './middleware/agent-rate-limit.js';
 import { estimateTokens, getContextWindow, isContextSizeError } from '../utils/context.js';
+import { isTransientError, calculateBackoffMs, sleep } from '../utils/retry.js';
+import { sendAlert } from '../utils/alerts.js';
 
 /**
  * Register all API routes on the Fastify server.
@@ -30,6 +33,7 @@ export function registerRoutes(
     logger: Logger,
 ): void {
     const authMiddleware = createAuthMiddleware(config);
+    const agentRateLimiter = createAgentRateLimiter(config.server.agentRateLimitPerMinute, logger);
 
     // ─── Root — Status Dashboard ───
     app.get('/', async (_request, reply) => {
@@ -251,7 +255,11 @@ ${recentRows}
     // ─── Chat Completions — the main route ───
     app.post('/v1/chat/completions', { preHandler: authMiddleware }, async (request, reply) => {
         const requestStartTime = Date.now();
-        const requestId = generateRequestId();
+        // Use client-provided correlation ID if present, otherwise generate UUID v4
+        const clientRequestId = request.headers['x-request-id'];
+        const requestId = (typeof clientRequestId === 'string' && clientRequestId.trim())
+            ? clientRequestId.trim()
+            : generateRequestId();
         const completionId = generateCompletionId();
 
         // 1. Validate the request
@@ -270,6 +278,53 @@ ${recentRows}
 
         logger.info({ requestId, model: body.model, messageCount: messages.length }, 'Request received');
 
+        // ─── Per-agent rate limiting ───
+        const agentId = agentRateLimiter.extractAgent(body.model ?? '');
+        if (agentId) {
+            const rateLimitResult = agentRateLimiter.check(agentId);
+            if (!rateLimitResult.allowed) {
+                reply.header('Retry-After', String(rateLimitResult.retryAfterSeconds));
+                reply.status(429).send(buildErrorResponse(
+                    `Agent "${agentId}" rate limited. Retry after ${rateLimitResult.retryAfterSeconds}s.`,
+                    'rate_limit_error',
+                ));
+                return;
+            }
+        }
+
+        // ─── Spending limits ───
+        if (tracker) {
+            const { dailyLimit, monthlyLimit } = config.spending;
+            if (dailyLimit !== null) {
+                const dailySpend = tracker.getDailySpend();
+                if (dailySpend >= dailyLimit) {
+                    sendAlert('Daily spending limit reached', `Spent $${dailySpend.toFixed(4)} / $${dailyLimit.toFixed(2)} daily limit`, 'critical', 'spending-daily-100');
+                    reply.status(429).send(buildErrorResponse(
+                        `Daily spending limit ($${dailyLimit.toFixed(2)}) reached. Current: $${dailySpend.toFixed(4)}`,
+                        'rate_limit_error',
+                    ));
+                    return;
+                }
+                if (dailySpend >= dailyLimit * 0.8) {
+                    sendAlert('Daily spending at 80%', `$${dailySpend.toFixed(4)} / $${dailyLimit.toFixed(2)} (${((dailySpend / dailyLimit) * 100).toFixed(1)}%)`, 'warning', 'spending-daily-80');
+                }
+            }
+            if (monthlyLimit !== null) {
+                const monthlySpend = tracker.getMonthlySpend();
+                if (monthlySpend >= monthlyLimit) {
+                    sendAlert('Monthly spending limit reached', `Spent $${monthlySpend.toFixed(4)} / $${monthlyLimit.toFixed(2)} monthly limit`, 'critical', 'spending-monthly-100');
+                    reply.status(429).send(buildErrorResponse(
+                        `Monthly spending limit ($${monthlyLimit.toFixed(2)}) reached. Current: $${monthlySpend.toFixed(4)}`,
+                        'rate_limit_error',
+                    ));
+                    return;
+                }
+                if (monthlySpend >= monthlyLimit * 0.8) {
+                    sendAlert('Monthly spending at 80%', `$${monthlySpend.toFixed(4)} / $${monthlyLimit.toFixed(2)} (${((monthlySpend / monthlyLimit) * 100).toFixed(1)}%)`, 'warning', 'spending-monthly-80');
+                }
+            }
+        }
+
         // Extract truncated last user message for audit logging (used by both success and error paths)
         const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
         const msgPreview = lastUserMsg
@@ -280,6 +335,9 @@ ${recentRows}
                     : String(lastUserMsg.content ?? ''))
             : '';
         const userMessagePreview = msgPreview.slice(0, 80);
+
+        // Debug logging — capture first 500 chars of input when enabled
+        const debugInput = config.server.debugLogging ? msgPreview.slice(0, 500) : undefined;
 
         // Track classification + routing for error reporting (hoisted for catch block access)
         let classification: Awaited<ReturnType<typeof classifier.classify>> | undefined;
@@ -394,135 +452,156 @@ ${recentRows}
                         return;
                     }
 
-                    try {
-                        const streamReq = { ...chatRequest, model: candidate.model };
-                        let headersSent = false;
-                        let finalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+                    // Inner retry loop: attempt 0 = first try, attempt 1 = retry (transient only)
+                    for (let attempt = 0; attempt < 2; attempt++) {
+                        try {
+                            const streamReq = { ...chatRequest, model: candidate.model };
+                            let headersSent = false;
+                            let finalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
-                        for await (const chunk of p.chatStream(streamReq)) {
-                            // Client disconnected mid-stream — stop reading from provider
-                            if (clientDisconnected || !isClientConnected(reply)) {
-                                logger.info({ requestId, provider: candidate.provider, model: candidate.model }, 'Client disconnected mid-stream, aborting');
-                                // Still track what we served
-                                const finalRouting = { ...routing, provider: candidate.provider, model: candidate.model, tier: candidate.tier };
-                                trackRequest(
-                                    tracker, config, requestId, finalRouting, classification, finalUsage,
-                                    Date.now() - requestStartTime, true, userMessagePreview,
-                                );
-                                return;
-                            }
-
-                            // Commit on first successful data — send SSE headers
-                            if (!headersSent) {
-                                reply.raw.setHeader('X-Pharos-Tier', candidate.tier);
-                                reply.raw.setHeader('X-Pharos-Model', candidate.model);
-                                reply.raw.setHeader('X-Pharos-Provider', candidate.provider);
-                                reply.raw.setHeader('X-Pharos-Score', String(classification.score));
-                                reply.raw.setHeader('X-Pharos-Request-Id', requestId);
-                                if (retryCount > 0) {
-                                    reply.raw.setHeader('X-Pharos-Retries', String(retryCount));
-                                }
-                                initSSEHeaders(reply);
-                                headersSent = true;
-                            }
-
-                            if (chunk.content) {
-                                if (!sendSSEChunk(reply, buildStreamChunk({
-                                    id: completionId,
-                                    model: candidate.model,
-                                    content: chunk.content,
-                                }))) {
-                                    logger.info({ requestId }, 'Client disconnected (write failed), aborting stream');
+                            for await (const chunk of p.chatStream(streamReq)) {
+                                // Client disconnected mid-stream — stop reading from provider
+                                if (clientDisconnected || !isClientConnected(reply)) {
+                                    logger.info({ requestId, provider: candidate.provider, model: candidate.model }, 'Client disconnected mid-stream, aborting');
+                                    const finalRouting = { ...routing, provider: candidate.provider, model: candidate.model, tier: candidate.tier };
+                                    trackRequest(
+                                        tracker, config, requestId, finalRouting, classification, finalUsage,
+                                        Date.now() - requestStartTime, true, userMessagePreview,
+                                        undefined, { debugInput },
+                                    );
                                     return;
                                 }
+
+                                // Commit on first successful data — send SSE headers
+                                if (!headersSent) {
+                                    reply.raw.setHeader('X-Pharos-Tier', candidate.tier);
+                                    reply.raw.setHeader('X-Pharos-Model', candidate.model);
+                                    reply.raw.setHeader('X-Pharos-Provider', candidate.provider);
+                                    reply.raw.setHeader('X-Pharos-Score', String(classification.score));
+                                    reply.raw.setHeader('X-Pharos-Request-Id', requestId);
+                                    if (retryCount > 0) {
+                                        reply.raw.setHeader('X-Pharos-Retries', String(retryCount));
+                                    }
+                                    initSSEHeaders(reply);
+                                    headersSent = true;
+                                }
+
+                                if (chunk.content) {
+                                    if (!sendSSEChunk(reply, buildStreamChunk({
+                                        id: completionId,
+                                        model: candidate.model,
+                                        content: chunk.content,
+                                    }))) {
+                                        logger.info({ requestId }, 'Client disconnected (write failed), aborting stream');
+                                        return;
+                                    }
+                                }
+
+                                if (chunk.finishReason) {
+                                    if (chunk.usage) finalUsage = chunk.usage;
+                                    sendSSEChunk(reply, buildStreamChunk({
+                                        id: completionId,
+                                        model: candidate.model,
+                                        content: '',
+                                        finishReason: chunk.finishReason,
+                                    }));
+                                }
                             }
 
-                            if (chunk.finishReason) {
-                                if (chunk.usage) finalUsage = chunk.usage;
-                                sendSSEChunk(reply, buildStreamChunk({
-                                    id: completionId,
+                            if (!sendSSEDone(reply)) {
+                                logger.debug({ requestId }, 'sendSSEDone failed (client likely disconnected)');
+                            }
+
+                            // Record per-provider latency
+                            const providerLatency = Date.now() - requestStartTime - (classification.latencyMs ?? 0);
+                            p.recordLatency(Math.max(0, providerLatency));
+
+                            // Track with the actual model that succeeded
+                            const finalRouting = { ...routing, provider: candidate.provider, model: candidate.model, tier: candidate.tier };
+                            trackRequest(
+                                tracker, config, requestId, finalRouting, classification, finalUsage,
+                                Date.now() - requestStartTime, true, userMessagePreview,
+                                undefined, { debugInput },
+                            );
+
+                            const cost = calculateCost(candidate.provider, candidate.model, finalUsage.promptTokens, finalUsage.completionTokens);
+                            logger.info(
+                                {
+                                    requestId,
+                                    tier: candidate.tier,
                                     model: candidate.model,
-                                    content: '',
-                                    finishReason: chunk.finishReason,
-                                }));
-                            }
-                        }
+                                    tokens: finalUsage.totalTokens,
+                                    cost: `$${cost.toFixed(6)}`,
+                                    latencyMs: Date.now() - requestStartTime,
+                                    preview: userMessagePreview,
+                                    retries: retryCount,
+                                },
+                                '✓ Completed (stream)',
+                            );
 
-                        if (!sendSSEDone(reply)) {
-                            logger.debug({ requestId }, 'sendSSEDone failed (client likely disconnected)');
-                        }
+                            succeeded = true;
+                            break; // break inner retry loop
+                        } catch (streamError) {
+                            // If headers already sent, we can't retry — fail gracefully
+                            if (reply.raw.headersSent) {
+                                const errMsg = streamError instanceof Error ? streamError.message : 'Unknown stream error';
 
-                        // Record per-provider latency
-                        const providerLatency = Date.now() - requestStartTime - (classification.latencyMs ?? 0);
-                        p.recordLatency(Math.max(0, providerLatency));
+                                // If client already gone, just log and bail
+                                if (clientDisconnected || !isClientConnected(reply)) {
+                                    logger.warn({ requestId, error: errMsg }, 'Stream error after client disconnect, dropping');
+                                    return;
+                                }
 
-                        // Track with the actual model that succeeded
-                        const finalRouting = { ...routing, provider: candidate.provider, model: candidate.model, tier: candidate.tier };
-                        trackRequest(
-                            tracker, config, requestId, finalRouting, classification, finalUsage,
-                            Date.now() - requestStartTime, true, userMessagePreview,
-                        );
-
-                        const cost = calculateCost(candidate.provider, candidate.model, finalUsage.promptTokens, finalUsage.completionTokens);
-                        logger.info(
-                            {
-                                requestId,
-                                tier: candidate.tier,
-                                model: candidate.model,
-                                tokens: finalUsage.totalTokens,
-                                cost: `$${cost.toFixed(6)}`,
-                                latencyMs: Date.now() - requestStartTime,
-                                preview: userMessagePreview,
-                                retries: retryCount,
-                            },
-                            '✓ Completed (stream)',
-                        );
-
-                        succeeded = true;
-                        break;
-                    } catch (streamError) {
-                        // If headers already sent, we can't retry — fail gracefully
-                        if (reply.raw.headersSent) {
-                            const errMsg = streamError instanceof Error ? streamError.message : 'Unknown stream error';
-
-                            // If client already gone, just log and bail
-                            if (clientDisconnected || !isClientConnected(reply)) {
-                                logger.warn({ requestId, error: errMsg }, 'Stream error after client disconnect, dropping');
+                                logger.error({ requestId, error: errMsg }, 'Stream error mid-response (cannot retry)');
+                                sendSSEChunk(reply, {
+                                    error: {
+                                        message: `Stream interrupted: ${errMsg}`,
+                                        type: 'server_error',
+                                        code: 'stream_error',
+                                    },
+                                });
+                                if (!sendSSEDone(reply)) {
+                                    logger.debug({ requestId }, 'sendSSEDone failed after stream error (client likely disconnected)');
+                                }
                                 return;
                             }
 
-                            logger.error({ requestId, error: errMsg }, 'Stream error mid-response (cannot retry)');
-                            sendSSEChunk(reply, {
-                                error: {
-                                    message: `Stream interrupted: ${errMsg}`,
-                                    type: 'server_error',
-                                    code: 'stream_error',
-                                },
-                            });
-                            if (!sendSSEDone(reply)) {
-                                logger.debug({ requestId }, 'sendSSEDone failed after stream error (client likely disconnected)');
+                            const errMsg = streamError instanceof Error ? streamError.message : 'unknown';
+
+                            // Don't damage provider health for context-size errors
+                            if (isContextSizeError(errMsg)) {
+                                p.undoLastError();
                             }
-                            return;
-                        }
 
-                        // Headers not sent yet — retry with next candidate
-                        retryCount++;
-                        const errMsg = streamError instanceof Error ? streamError.message : 'unknown';
+                            // On first attempt, retry with backoff if transient
+                            if (attempt === 0 && isTransientError(streamError)) {
+                                const backoffMs = calculateBackoffMs(0);
+                                logger.info(
+                                    { requestId, provider: candidate.provider, model: candidate.model, backoffMs: Math.round(backoffMs) },
+                                    '⟳ Transient stream error, retrying same provider with backoff',
+                                );
+                                await sleep(backoffMs);
+                                continue; // retry same candidate
+                            }
 
-                        // Don't damage provider health for context-size errors
-                        if (isContextSizeError(errMsg)) {
-                            p.undoLastError();
-                            logger.warn(
-                                { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount },
-                                '⟳ Context too large for model, trying next (health preserved)',
-                            );
-                        } else {
-                            logger.warn(
-                                { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount, error: errMsg },
-                                '⟳ Stream failed before data, trying next model',
-                            );
+                            // Non-transient or retry also failed — failover to next candidate
+                            retryCount++;
+                            if (isContextSizeError(errMsg)) {
+                                logger.warn(
+                                    { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount },
+                                    '⟳ Context too large for model, trying next (health preserved)',
+                                );
+                            } else {
+                                logger.warn(
+                                    { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount, error: errMsg },
+                                    '⟳ Stream failed before data, trying next model',
+                                );
+                            }
+                            break; // break inner retry loop, continue to next candidate
                         }
-                    }
+                    } // end inner retry loop
+
+                    if (succeeded) break; // break outer candidate loop
                 }
 
                 if (!succeeded) {
@@ -541,32 +620,56 @@ ${recentRows}
                 const p = registry.get(candidate.provider);
                 if (!p) continue;
 
-                try {
-                    const callStart = Date.now();
-                    response = await p.chat({ ...chatRequest, model: candidate.model });
-                    p.recordLatency(Date.now() - callStart);
-                    usedProvider = candidate.provider;
-                    usedModel = candidate.model;
-                    usedTier = candidate.tier;
-                    break;
-                } catch (err) {
-                    retryCount++;
-                    const errMsg = err instanceof Error ? err.message : 'unknown';
+                let candidateSucceeded = false;
 
-                    // Don't damage provider health for context-size errors
-                    if (isContextSizeError(errMsg)) {
-                        p.undoLastError();
-                        logger.warn(
-                            { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount },
-                            '⟳ Context too large for model, trying next (health preserved)',
-                        );
-                    } else {
-                        logger.warn(
-                            { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount, error: errMsg },
-                            '⟳ Provider error, trying next model',
-                        );
+                // Inner retry loop: attempt 0 = first try, attempt 1 = retry (transient only)
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    try {
+                        const callStart = Date.now();
+                        response = await p.chat({ ...chatRequest, model: candidate.model });
+                        p.recordLatency(Date.now() - callStart);
+                        usedProvider = candidate.provider;
+                        usedModel = candidate.model;
+                        usedTier = candidate.tier;
+                        candidateSucceeded = true;
+                        break; // break inner retry loop
+                    } catch (err) {
+                        const errMsg = err instanceof Error ? err.message : 'unknown';
+
+                        // Don't damage provider health for context-size errors
+                        if (isContextSizeError(errMsg)) {
+                            p.undoLastError();
+                        }
+
+                        // On first attempt, retry with backoff if transient
+                        if (attempt === 0 && isTransientError(err)) {
+                            const backoffMs = calculateBackoffMs(0);
+                            logger.info(
+                                { requestId, provider: candidate.provider, model: candidate.model, backoffMs: Math.round(backoffMs) },
+                                '⟳ Transient error, retrying same provider with backoff',
+                            );
+                            await sleep(backoffMs);
+                            continue; // retry same candidate
+                        }
+
+                        // Non-transient or retry also failed — failover to next candidate
+                        retryCount++;
+                        if (isContextSizeError(errMsg)) {
+                            logger.warn(
+                                { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount },
+                                '⟳ Context too large for model, trying next (health preserved)',
+                            );
+                        } else {
+                            logger.warn(
+                                { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount, error: errMsg },
+                                '⟳ Provider error, trying next model',
+                            );
+                        }
+                        break; // break inner retry loop, continue to next candidate
                     }
-                }
+                } // end inner retry loop
+
+                if (candidateSucceeded) break; // break outer candidate loop
             }
 
             if (!response) {
@@ -575,11 +678,15 @@ ${recentRows}
 
             const cost = calculateCost(usedProvider, usedModel, response.usage.promptTokens, response.usage.completionTokens);
 
+            // Debug logging — capture first 500 chars of output when enabled
+            const debugOutput = config.server.debugLogging ? response.content.slice(0, 500) : undefined;
+
             // Track with the actual model that succeeded
             const finalRouting = { ...routing, provider: usedProvider, model: usedModel, tier: usedTier };
             trackRequest(
                 tracker, config, requestId, finalRouting, classification, response.usage,
                 Date.now() - requestStartTime, false, userMessagePreview,
+                undefined, { debugInput, debugOutput },
             );
 
             logger.info(
@@ -625,6 +732,7 @@ ${recentRows}
                     { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
                     Date.now() - requestStartTime, body.stream ?? false, userMessagePreview,
                     { status: 'error', errorMessage: errMsg },
+                    { debugInput },
                 );
             }
 
@@ -686,6 +794,7 @@ function trackRequest(
     stream: boolean,
     userMessagePreview: string,
     errorInfo?: { status: 'error'; errorMessage: string },
+    debugInfo?: { debugInput?: string; debugOutput?: string },
 ): void {
     if (!tracker) return;
 
@@ -717,5 +826,6 @@ function trackRequest(
         isDirectRoute: routing.isDirectRoute,
         userMessagePreview,
         ...(errorInfo && { status: errorInfo.status, errorMessage: errorInfo.errorMessage }),
+        ...(debugInfo && { debugInput: debugInfo.debugInput, debugOutput: debugInfo.debugOutput }),
     });
 }

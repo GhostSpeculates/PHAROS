@@ -32,24 +32,19 @@ describe('generateCompletionId', () => {
 });
 
 // ────────────────────────────────────────────────────────────────
-// generateRequestId
+// generateRequestId (UUID v4)
 // ────────────────────────────────────────────────────────────────
 describe('generateRequestId', () => {
-    it('starts with "req-"', () => {
+    const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+    it('returns a valid UUID v4', () => {
         const id = generateRequestId();
-        expect(id.startsWith('req-')).toBe(true);
+        expect(id).toMatch(UUID_V4_REGEX);
     });
 
-    it('has content after the prefix', () => {
+    it('is 36 characters long (UUID format)', () => {
         const id = generateRequestId();
-        const suffix = id.replace('req-', '');
-        expect(suffix.length).toBeGreaterThan(0);
-    });
-
-    it('suffix is exactly 16 characters (nanoid(16))', () => {
-        const id = generateRequestId();
-        const suffix = id.replace('req-', '');
-        expect(suffix).toHaveLength(16);
+        expect(id).toHaveLength(36);
     });
 
     it('generates unique IDs (100 IDs, all different)', () => {
@@ -58,6 +53,14 @@ describe('generateRequestId', () => {
             ids.add(generateRequestId());
         }
         expect(ids.size).toBe(100);
+    });
+
+    it('version nibble is always 4 (UUID v4)', () => {
+        for (let i = 0; i < 20; i++) {
+            const id = generateRequestId();
+            // The 15th character (0-indexed 14) should be '4'
+            expect(id[14]).toBe('4');
+        }
     });
 });
 
@@ -75,13 +78,13 @@ describe('ID uniqueness across functions', () => {
     });
 
     it('IDs contain only URL-safe characters', () => {
-        // nanoid uses A-Za-z0-9_- by default
         const urlSafePattern = /^[A-Za-z0-9_-]+$/;
+        const uuidSafePattern = /^[0-9a-f-]+$/;
         for (let i = 0; i < 20; i++) {
             const completionSuffix = generateCompletionId().replace('chatcmpl-', '');
-            const requestSuffix = generateRequestId().replace('req-', '');
+            const requestId = generateRequestId();
             expect(completionSuffix).toMatch(urlSafePattern);
-            expect(requestSuffix).toMatch(urlSafePattern);
+            expect(requestId).toMatch(uuidSafePattern);
         }
     });
 });

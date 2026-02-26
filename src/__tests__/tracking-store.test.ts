@@ -306,6 +306,91 @@ describe('TrackingStore', () => {
         });
     });
 
+    describe('spending queries', () => {
+        it('getDailySpend returns 0 when no records exist', () => {
+            expect(store.getDailySpend()).toBe(0);
+        });
+
+        it('getDailySpend sums costs for today only', () => {
+            const today = new Date().toISOString().slice(0, 10);
+            const yesterday = new Date(Date.now() - 86400000).toISOString();
+
+            store.record(makeRecord({
+                id: 'req-today-1',
+                timestamp: `${today}T12:00:00.000Z`,
+                estimatedCost: 0.05,
+            }));
+            store.record(makeRecord({
+                id: 'req-today-2',
+                timestamp: `${today}T13:00:00.000Z`,
+                estimatedCost: 0.10,
+            }));
+            store.record(makeRecord({
+                id: 'req-yesterday',
+                timestamp: yesterday,
+                estimatedCost: 1.00,
+            }));
+
+            expect(store.getDailySpend()).toBeCloseTo(0.15);
+        });
+
+        it('getMonthlySpend returns 0 when no records exist', () => {
+            expect(store.getMonthlySpend()).toBe(0);
+        });
+
+        it('getMonthlySpend sums costs for the current month', () => {
+            const monthStart = new Date().toISOString().slice(0, 7) + '-01';
+            const lastMonth = new Date(Date.now() - 35 * 86400000).toISOString();
+
+            store.record(makeRecord({
+                id: 'req-this-month-1',
+                timestamp: `${monthStart}T12:00:00.000Z`,
+                estimatedCost: 0.50,
+            }));
+            store.record(makeRecord({
+                id: 'req-this-month-2',
+                timestamp: new Date().toISOString(),
+                estimatedCost: 0.25,
+            }));
+            store.record(makeRecord({
+                id: 'req-last-month',
+                timestamp: lastMonth,
+                estimatedCost: 5.00,
+            }));
+
+            expect(store.getMonthlySpend()).toBeCloseTo(0.75);
+        });
+    });
+
+    describe('debug logging fields', () => {
+        it('stores debugInput when provided', () => {
+            store.record(makeRecord({
+                id: 'req-debug-1',
+                debugInput: 'What is the capital of France?',
+            }));
+
+            const recent = store.getRecent(1);
+            expect(recent).toHaveLength(1);
+        });
+
+        it('stores debugOutput when provided', () => {
+            store.record(makeRecord({
+                id: 'req-debug-2',
+                debugInput: 'What is 2+2?',
+                debugOutput: 'The answer is 4.',
+            }));
+
+            const recent = store.getRecent(1);
+            expect(recent).toHaveLength(1);
+        });
+
+        it('stores null debug fields when not provided', () => {
+            store.record(makeRecord({ id: 'req-no-debug' }));
+            const recent = store.getRecent(1);
+            expect(recent).toHaveLength(1);
+        });
+    });
+
     describe('migration idempotency', () => {
         it('creating a second store on the same database does not crash', () => {
             // The first store already created tables + ran migrations in beforeEach.

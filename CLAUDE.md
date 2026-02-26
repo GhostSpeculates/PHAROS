@@ -156,16 +156,18 @@ src/
 │   ├── router.ts                     # HTTP route handlers + HTML dashboard
 │   ├── middleware/
 │   │   ├── auth.ts                   # API key auth
+│   │   ├── agent-rate-limit.ts       # Per-agent sliding window rate limiter
 │   │   └── error-handler.ts          # Error formatting
 │   └── schemas/
 │       ├── request.ts                # Request validation
 │       └── response.ts               # Response builders
 └── utils/
     ├── logger.ts                     # Pino logger factory
-    ├── id.ts                         # nanoid generators
+    ├── id.ts                         # UUID v4 + nanoid generators
     ├── context.ts                    # Context window sizes + token estimation
     ├── stream.ts                     # SSE helpers
     ├── alerts.ts                     # Discord webhook alerts (singleton)
+    ├── retry.ts                      # Retry-with-backoff for transient errors
     └── self-test.ts                  # Startup provider self-test
 ```
 
@@ -175,7 +177,8 @@ src/
 - Message content capped at 500KB, conversation array capped at 500 messages
 - Bearer token parsing uses strict regex (`/^Bearer\s+(\S+)$/`)
 - CORS configurable via `PHAROS_CORS_ORIGINS` env var (comma-separated, defaults to localhost dev ports)
-- Rate limiting: 100 req/min per IP via `@fastify/rate-limit`
+- Rate limiting: 100 req/min per IP via `@fastify/rate-limit`, 30 req/min per agent
+- Spending limits: daily/monthly caps, alerts at 80%/100%, 429 when exceeded
 - Provider request timeouts: 30s default (AbortController for OpenAI/Anthropic, native for Google)
 - Provider health cooldown: configurable (default 60s), tracked via consecutive error count
 - Classifier validates response scores (must be finite number 1-10, otherwise tries next provider)
@@ -205,8 +208,8 @@ src/
 
 - **Framework**: Vitest 4
 - **Test files**: `src/__tests__/*.test.ts`
-- **Coverage**: tier-resolver (23), cost-calculator (20), auth middleware (9), ID generators (10), config schema (41), classifier (11), failover (15), tracking-store (23), router (15), context (21), stream (10), providers (118), alerts (37), self-test (15), semaphore, lru-cache
-- **Total**: 772 tests, all passing (386 src + 386 dist)
+- **Coverage**: tier-resolver (23), cost-calculator (20), auth middleware (9), ID generators (10), config schema (52), classifier (17), failover (15), tracking-store (30), router (15), context (21), stream (10), providers (118), alerts (26), self-test (15), semaphore (16), lru-cache (10), agent-rate-limit (12), retry (40)
+- **Total**: 918 tests, all passing (459 src + 459 dist)
 - Run: `npm test` or `npm run test:watch`
 
 ## Alerts & Monitoring
@@ -225,13 +228,18 @@ src/
 - **Phase 1 (Core Engine)**: IN PROGRESS — core built and deployed, needs continued hardening
   - ⚠️ Phase 1 is NOT complete. Do NOT start Phase 2 features until Ghost declares Phase 1 done.
   - ⚠️ Do NOT change this status line. Only the project owner (Ghost) can declare Phase 1 complete.
-  - Routing, classification, multi-provider (8), failover, tracking, security, 772 tests
+  - Routing, classification, multi-provider (8), failover, tracking, security, 918 tests
   - Classifier: concurrency semaphore (max 5), LRU cache (30s TTL), 429 fast failover, metrics
   - Classifier failover chain (Moonshot/kimi-latest → Groq → xAI → static fallback/economical)
   - Frontier prompt tightened: 99% of tasks score 1-8, explicit "NOT 9-10" examples
   - Discord alerts + ntfy.sh phone push (critical only) + startup self-test
   - Error tracking in SQLite (status + error_message columns)
   - Configurable: rate limit, body limit, retention days, oversized threshold, self-test, classifier concurrency
+  - Request ID: UUID v4 (crypto.randomUUID()), X-Request-Id client correlation
+  - Per-agent rate limiting: sliding window counter, configurable per-minute limit
+  - Spending limits: daily/monthly caps with alerts at 80% and 100%
+  - Retry with backoff: transient errors (429/502/503) retried once before failover
+  - Debug logging: opt-in, first 500 chars of input/output stored in SQLite
   - CORS defaults to localhost dev ports (not wide open)
   - Google multimodal fix (array content handling)
   - Moonshot: international platform (api.moonshot.ai), model kimi-latest

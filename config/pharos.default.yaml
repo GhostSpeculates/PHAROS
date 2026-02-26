@@ -10,8 +10,12 @@ server:
   bodyLimitMb: 10
   # Max requests per minute per IP (rate limiting)
   rateLimitPerMinute: 100
+  # Max requests per minute per agent (extracted from model field, e.g. pharos-auto:agent-name)
+  agentRateLimitPerMinute: 30
   # Run a quick self-test on startup to verify providers respond
   selfTest: true
+  # Enable debug logging (stores first 500 chars of input/output in tracking DB)
+  debugLogging: false
 
 # Your Pharos API key — clients must send this to authenticate
 # Can also be set via PHAROS_API_KEY env var
@@ -187,6 +191,12 @@ pricing:
     model: grok-3-mini-fast
     inputCostPerMillion: 0.30
     outputCostPerMillion: 0.50
+
+# Spending limits — set to null (or omit) to disable
+# Alerts fire at 80% and 100% of each limit
+spending:
+  dailyLimit: null
+  monthlyLimit: null
 
 # Cost tracking
 tracking:

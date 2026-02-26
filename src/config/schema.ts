@@ -90,7 +90,9 @@ export const ServerConfigSchema = z.object({
     host: z.string().default('0.0.0.0'),
     bodyLimitMb: z.number().positive().default(10),
     rateLimitPerMinute: z.number().int().positive().default(100),
+    agentRateLimitPerMinute: z.number().int().positive().default(30),
     selfTest: z.boolean().default(true),
+    debugLogging: z.boolean().default(false),
 });
 
 // ─── Router configuration ───
@@ -113,6 +115,12 @@ export const AuthConfigSchema = z.object({
 export const LoggingConfigSchema = z.object({
     level: z.string().default('info'),
     pretty: z.boolean().default(true),
+});
+
+// ─── Spending limits configuration ───
+export const SpendingConfigSchema = z.object({
+    dailyLimit: z.number().positive().nullable().default(null),
+    monthlyLimit: z.number().positive().nullable().default(null),
 });
 
 // ─── Full Pharos configuration ───
@@ -163,6 +171,7 @@ export const PharosConfigSchema = z.object({
         }),
     providers: z.record(z.string(), ProviderConfigSchema).default({}),
     pricing: z.array(PricingEntrySchema).optional(),
+    spending: SpendingConfigSchema.default({}),
     tracking: TrackingConfigSchema.default({}),
     logging: LoggingConfigSchema.default({}),
 });
