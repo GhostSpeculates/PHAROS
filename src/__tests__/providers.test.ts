@@ -541,7 +541,9 @@ describe('AnthropicProvider', () => {
       );
 
       expect(mockAnthropicCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ system: 'You are helpful.' }),
+        expect.objectContaining({
+          system: [{ type: 'text', text: 'You are helpful.', cache_control: { type: 'ephemeral' } }],
+        }),
         expect.anything(),
       );
     });
@@ -568,7 +570,13 @@ describe('AnthropicProvider', () => {
 
       expect(mockAnthropicCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          system: 'First instruction.\n\nSecond instruction.',
+          system: [
+            {
+              type: 'text',
+              text: 'First instruction.\n\nSecond instruction.',
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
         }),
         expect.anything(),
       );
@@ -602,7 +610,13 @@ describe('AnthropicProvider', () => {
 
       expect(mockAnthropicCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          system: 'Part A Part B',
+          system: [
+            {
+              type: 'text',
+              text: 'Part A Part B',
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
         }),
         expect.anything(),
       );
@@ -629,13 +643,150 @@ describe('AnthropicProvider', () => {
       );
 
       const callArgs = mockAnthropicCreate.mock.calls[0][0];
+      // 3 messages → second-to-last (assistant) gets cache breakpoint
       expect(callArgs.messages).toEqual([
         { role: 'user', content: 'Hello' },
-        { role: 'assistant', content: 'Hi there' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'Hi there', cache_control: { type: 'ephemeral' } },
+          ],
+        },
         { role: 'user', content: 'Follow-up' },
       ]);
       // No system param when no system message
       expect(callArgs.system).toBeUndefined();
+    });
+
+    // ─── Prompt Caching Tests ───
+
+    it('does not add cache breakpoint with fewer than 3 messages', async () => {
+      const provider = new AnthropicProvider('sk-test', logger);
+
+      mockAnthropicCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'R' }],
+        model: 'model',
+        usage: { input_tokens: 10, output_tokens: 5 },
+        stop_reason: 'end_turn',
+      });
+
+      await provider.chat(
+        makeRequest({
+          messages: [
+            { role: 'user', content: 'Hello' },
+            { role: 'assistant', content: 'Hi there' },
+          ],
+        }),
+      );
+
+      const callArgs = mockAnthropicCreate.mock.calls[0][0];
+      // 2 messages — no cache breakpoint
+      expect(callArgs.messages).toEqual([
+        { role: 'user', content: 'Hello' },
+        { role: 'assistant', content: 'Hi there' },
+      ]);
+    });
+
+    it('adds cache breakpoint to second-to-last message in 4+ message conversations', async () => {
+      const provider = new AnthropicProvider('sk-test', logger);
+
+      mockAnthropicCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'R' }],
+        model: 'model',
+        usage: { input_tokens: 10, output_tokens: 5 },
+        stop_reason: 'end_turn',
+      });
+
+      await provider.chat(
+        makeRequest({
+          messages: [
+            { role: 'user', content: 'M1' },
+            { role: 'assistant', content: 'M2' },
+            { role: 'user', content: 'M3' },
+            { role: 'assistant', content: 'M4' },
+            { role: 'user', content: 'M5' },
+          ],
+        }),
+      );
+
+      const callArgs = mockAnthropicCreate.mock.calls[0][0];
+      // Only message at index 3 (second-to-last) gets cache_control
+      expect(callArgs.messages[0]).toEqual({ role: 'user', content: 'M1' });
+      expect(callArgs.messages[1]).toEqual({ role: 'assistant', content: 'M2' });
+      expect(callArgs.messages[2]).toEqual({ role: 'user', content: 'M3' });
+      expect(callArgs.messages[3]).toEqual({
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'M4', cache_control: { type: 'ephemeral' } },
+        ],
+      });
+      expect(callArgs.messages[4]).toEqual({ role: 'user', content: 'M5' });
+    });
+
+    it('handles array content in cache breakpoint message', async () => {
+      const provider = new AnthropicProvider('sk-test', logger);
+
+      mockAnthropicCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'R' }],
+        model: 'model',
+        usage: { input_tokens: 10, output_tokens: 5 },
+        stop_reason: 'end_turn',
+      });
+
+      await provider.chat(
+        makeRequest({
+          messages: [
+            { role: 'user', content: 'Hello' },
+            {
+              role: 'assistant',
+              content: [
+                { type: 'text', text: 'Block A' },
+                { type: 'text', text: 'Block B' },
+              ] as any,
+            },
+            { role: 'user', content: 'Follow-up' },
+          ],
+        }),
+      );
+
+      const callArgs = mockAnthropicCreate.mock.calls[0][0];
+      // Array content: cache_control added to the last block in the array
+      expect(callArgs.messages[1]).toEqual({
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Block A' },
+          { type: 'text', text: 'Block B', cache_control: { type: 'ephemeral' } },
+        ],
+      });
+    });
+
+    it('system message cache_control is ephemeral type', async () => {
+      const provider = new AnthropicProvider('sk-test', logger);
+
+      mockAnthropicCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'R' }],
+        model: 'claude-sonnet-4-20250514',
+        usage: { input_tokens: 10, output_tokens: 5 },
+        stop_reason: 'end_turn',
+      });
+
+      await provider.chat(
+        makeRequest({
+          messages: [
+            { role: 'system', content: 'Be concise.' },
+            { role: 'user', content: 'Hi' },
+          ],
+        }),
+      );
+
+      const callArgs = mockAnthropicCreate.mock.calls[0][0];
+      expect(callArgs.system).toEqual([
+        {
+          type: 'text',
+          text: 'Be concise.',
+          cache_control: { type: 'ephemeral' },
+        },
+      ]);
     });
 
     it('returns correct response structure', async () => {

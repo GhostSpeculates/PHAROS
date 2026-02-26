@@ -8,7 +8,8 @@ Pharos is an intelligent LLM routing gateway. It sits between AI apps (OpenClaw,
 
 ```
 HTTP Request → Auth Middleware → Zod Validation → Classifier (failover chain)
-  → Router (score→tier→model) → Provider Adapter → Response (OpenAI format)
+  → Router (score→tier→model) → Conversation Tracker (tier floor)
+  → Provider Adapter (prompt caching) → Response (OpenAI format)
   → Tracking (SQLite cost log + classifier provider)
 ```
 
@@ -133,7 +134,7 @@ src/
 │   └── start.ts                      # pharos start
 ├── config/
 │   ├── index.ts                      # Config loader
-│   └── schema.ts                     # Zod schemas (incl. ClassifierProviderEntrySchema)
+│   └── schema.ts                     # Zod schemas (incl. ClassifierProviderEntrySchema, ConversationConfigSchema)
 ├── classifier/
 │   ├── index.ts                      # QueryClassifier (failover chain)
 │   ├── prompt.ts                     # Classification prompt + input truncation
@@ -142,7 +143,7 @@ src/
 │   ├── base.ts                       # Abstract LLMProvider
 │   ├── types.ts                      # ChatMessage, ChatRequest, etc.
 │   ├── index.ts                      # ProviderRegistry
-│   ├── anthropic.ts                  # Claude adapter
+│   ├── anthropic.ts                  # Claude adapter (prompt caching)
 │   ├── google.ts                     # Gemini adapter
 │   └── openai-compat.ts             # DeepSeek/Groq/Mistral/OpenAI/Moonshot/xAI
 ├── registry/
@@ -151,6 +152,7 @@ src/
 │   ├── index.ts                      # ModelRouter (incl. task-type overrides)
 │   ├── tier-resolver.ts              # Score→tier logic
 │   ├── affinity.ts                   # Task-type affinity sorting
+│   ├── conversation-tracker.ts       # Conversation tier floor tracking (LRU-backed)
 │   └── failover.ts                   # Failover chain (affinity-aware)
 ├── tracking/
 │   ├── store.ts                      # SQLite TrackingStore (incl. classifier_provider column)
@@ -192,6 +194,7 @@ src/
 - TrackingStore.close() is idempotent (safe for multiple shutdown paths)
 - Stream errors caught and SSE properly closed on failure
 - Systemd: Restart=always, memory limits (2G max), graceful shutdown (SIGTERM, 30s timeout)
+- Conversation tracking: bounded LRU cache (500 max, 30min TTL) prevents unbounded memory growth
 
 ## Development Notes
 
@@ -211,13 +214,17 @@ src/
 - Virtual model names: `pharos-code`, `pharos-math`, `pharos-reasoning`, `pharos-creative`, `pharos-analysis`, `pharos-conversation` force a task type while using classifier for complexity
 - Affinity config: `taskAffinity` in YAML overrides defaults from `src/router/affinity.ts`
 - 10 task types: greeting, lookup, analysis, planning, creative, code, reasoning, tool_use, math, conversation
+- Conversation tracking: LRU-backed tier floor prevents quality drops in multi-turn conversations
+- Conversation tier floor: one tier below highest seen (e.g. premium peak → economical floor)
+- Anthropic prompt caching: system messages get `cache_control: { type: 'ephemeral' }`, multi-turn conversations get cache breakpoint on second-to-last message
+- Conversation config: `conversation.enabled`, `conversation.maxConversations` (500), `conversation.conversationTtlMs` (30min)
 
 ## Testing
 
 - **Framework**: Vitest 4
 - **Test files**: `src/__tests__/*.test.ts`
-- **Coverage**: tier-resolver (23), cost-calculator (25), auth middleware (9), ID generators (10), config schema (52), classifier (21), failover (15), tracking-store (30), router (35), context (26), stream (10), providers (118), alerts (26), self-test (15), semaphore (16), lru-cache (10), agent-rate-limit (12), retry (40), registry (22), affinity (18)
-- **Total**: 1066 tests, all passing (533 src + 533 dist)
+- **Coverage**: tier-resolver (23), cost-calculator (25), auth middleware (9), ID generators (10), config schema (52), classifier (21), failover (15), tracking-store (30), router (35), context (26), stream (10), providers (122), alerts (26), self-test (15), semaphore (16), lru-cache (10), agent-rate-limit (12), retry (40), registry (22), affinity (18), conversation-tracker (23)
+- **Total**: 1120 tests, all passing (560 src + 560 dist)
 - Run: `npm test` or `npm run test:watch`
 
 ## Alerts & Monitoring
@@ -256,6 +263,7 @@ src/
   - **Phase 2A**: ✅ Provider expansion — Together AI + Fireworks AI (5 new models)
   - **Phase 2B**: ✅ Model registry — `src/registry/models.ts` with capabilities, pricing, speed metadata
   - **Phase 2C**: ✅ Task-type-aware routing — affinity system, virtual model names (pharos-code, pharos-math, etc.)
+  - **Phase 2D**: ✅ Conversation tracking + prompt caching — tier floor prevents quality drops, Anthropic cache hints
   - Performance learning + auto-tuned routing weights
 - **Phase 3 (Dashboard)**: NOT STARTED — web UI, model registry browser, routing visualization
 - **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker Hub, docs site, community registry

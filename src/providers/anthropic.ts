@@ -204,12 +204,16 @@ export class AnthropicProvider extends LLMProvider {
     /**
      * Convert OpenAI-format messages to Anthropic format.
      * Anthropic requires system messages to be separate from the messages array.
+     *
+     * Adds prompt caching hints:
+     * - System message gets cache_control for reuse across turns
+     * - Multi-turn conversations get a cache breakpoint on the second-to-last message
      */
     private convertMessages(messages: ChatRequest['messages']): {
-        system: string | undefined;
+        system: Anthropic.TextBlockParam[] | undefined;
         messages: Anthropic.MessageParam[];
     } {
-        let system: string | undefined;
+        let systemText: string | undefined;
         const converted: Anthropic.MessageParam[] = [];
 
         for (const msg of messages) {
@@ -220,12 +224,39 @@ export class AnthropicProvider extends LLMProvider {
                     : Array.isArray(msg.content)
                         ? msg.content.filter((p: any) => p.type === 'text').map((p: any) => p.text).join(' ')
                         : '';
-                system = (system ? system + '\n\n' : '') + text;
+                systemText = (systemText ? systemText + '\n\n' : '') + text;
             } else if (msg.role === 'user' || msg.role === 'assistant') {
                 converted.push({
                     role: msg.role,
                     content: msg.content as any,
                 });
+            }
+        }
+
+        // System message as content block array with cache_control
+        const system: Anthropic.TextBlockParam[] | undefined = systemText
+            ? [{ type: 'text' as const, text: systemText, cache_control: { type: 'ephemeral' as const } }]
+            : undefined;
+
+        // Multi-turn caching: add cache_control breakpoint to second-to-last message
+        // This marks the boundary between cached history and new input
+        if (converted.length >= 3) {
+            const breakpointIdx = converted.length - 2;
+            const breakpointMsg = converted[breakpointIdx];
+            const cacheControl = { type: 'ephemeral' as const };
+
+            if (typeof breakpointMsg.content === 'string') {
+                // String content → wrap in content block array with cache_control
+                converted[breakpointIdx] = {
+                    ...breakpointMsg,
+                    content: [{ type: 'text' as const, text: breakpointMsg.content, cache_control: cacheControl }],
+                };
+            } else if (Array.isArray(breakpointMsg.content) && breakpointMsg.content.length > 0) {
+                // Array content → add cache_control to last block
+                const blocks = [...breakpointMsg.content] as any[];
+                const lastBlock = { ...blocks[blocks.length - 1], cache_control: cacheControl };
+                blocks[blocks.length - 1] = lastBlock;
+                converted[breakpointIdx] = { ...breakpointMsg, content: blocks };
             }
         }
 

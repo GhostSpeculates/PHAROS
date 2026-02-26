@@ -130,6 +130,13 @@ export const SpendingConfigSchema = z.object({
     monthlyLimit: z.number().positive().nullable().default(null),
 });
 
+// ─── Conversation tracking configuration ───
+export const ConversationConfigSchema = z.object({
+    maxConversations: z.number().int().positive().default(500),
+    conversationTtlMs: z.number().int().positive().default(1_800_000),
+    enabled: z.boolean().default(true),
+});
+
 // ─── Full Pharos configuration ───
 export const PharosConfigSchema = z.object({
     server: ServerConfigSchema.default({}),
@@ -180,6 +187,7 @@ export const PharosConfigSchema = z.object({
     pricing: z.array(PricingEntrySchema).optional(),
     taskAffinity: TaskAffinitySchema.default({}),
     spending: SpendingConfigSchema.default({}),
+    conversation: ConversationConfigSchema.default({}),
     tracking: TrackingConfigSchema.default({}),
     logging: LoggingConfigSchema.default({}),
 });
