@@ -41,7 +41,19 @@ SCORING GUIDE (1-10):
   Examples: "Unify RLHF with mechanism design theory using Arrow's impossibility theorem and provide formal proofs", "Derive new bounds on transformer expressiveness using circuit complexity theory"
   Rule: Publishable-quality novel research synthesis across 3+ academic disciplines with formal mathematical rigor. Almost nothing scores 10.
 
-Task types: greeting | lookup | analysis | planning | creative | code | reasoning | tool_use
+Task types: greeting | lookup | analysis | planning | creative | code | reasoning | tool_use | math | conversation
+
+TASK TYPE GUIDE:
+- greeting: "Hi", "Thanks!", casual chitchat
+- lookup: Factual questions, definitions, translations
+- code: Writing, reviewing, debugging, or explaining code
+- math: Mathematical problems, equations, proofs, statistics
+- reasoning: Logic puzzles, complex analysis, multi-step deduction
+- creative: Writing stories, poems, brainstorming, copywriting
+- analysis: Research, comparisons, summaries, deep-dives on topics
+- planning: Architecture design, system design, project planning
+- conversation: Multi-turn dialog, roleplay, advice, general Q&A
+- tool_use: API calls, function invocations, structured data extraction
 
 CRITICAL RULES:
 - Consider the SYSTEM message too. A system prompt like "You are a senior architect" signals higher complexity.

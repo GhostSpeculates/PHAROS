@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildClassificationInput } from '../classifier/prompt.js';
+import { TASK_TYPES } from '../classifier/types.js';
 
 // ────────────────────────────────────────────────────────────────
 // buildClassificationInput — truncation tests
@@ -149,6 +150,47 @@ describe('ClassificationResult type', () => {
             isCacheHit: true,
         };
         expect(result.isCacheHit).toBe(true);
+    });
+
+    it('supports math task type', () => {
+        const result = {
+            score: 6,
+            type: 'math' as const,
+            latencyMs: 50,
+            isFallback: false,
+            classifierProvider: 'moonshot',
+        };
+        expect(result.type).toBe('math');
+    });
+
+    it('supports conversation task type', () => {
+        const result = {
+            score: 2,
+            type: 'conversation' as const,
+            latencyMs: 50,
+            isFallback: false,
+            classifierProvider: 'moonshot',
+        };
+        expect(result.type).toBe('conversation');
+    });
+});
+
+describe('TASK_TYPES', () => {
+    it('includes all expected task types', () => {
+        expect(TASK_TYPES).toContain('code');
+        expect(TASK_TYPES).toContain('math');
+        expect(TASK_TYPES).toContain('reasoning');
+        expect(TASK_TYPES).toContain('creative');
+        expect(TASK_TYPES).toContain('analysis');
+        expect(TASK_TYPES).toContain('conversation');
+        expect(TASK_TYPES).toContain('greeting');
+        expect(TASK_TYPES).toContain('lookup');
+        expect(TASK_TYPES).toContain('planning');
+        expect(TASK_TYPES).toContain('tool_use');
+    });
+
+    it('has 10 task types total', () => {
+        expect(TASK_TYPES.length).toBe(10);
     });
 });
 

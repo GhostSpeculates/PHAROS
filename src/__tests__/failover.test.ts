@@ -47,7 +47,11 @@ function makeConfig(overrides?: Partial<PharosConfig['tiers']>): PharosConfig {
             cacheTtlMs: 30000,
         },
         tiers: { ...defaultTiers, ...overrides },
+        taskAffinity: {},
         providers: {},
+        alerts: {},
+        router: { oversizedThresholdTokens: 100000 },
+        spending: { dailyLimit: null, monthlyLimit: null },
         tracking: {
             enabled: true,
             dbPath: './data/pharos.db',
@@ -105,8 +109,8 @@ describe('findAvailableModel', () => {
         expect(result.provider).toBe('google');
         expect(result.model).toBe('gemini-2.0-flash');
         expect(result.tier).toBe('free');
-        expect(result.attempts).toBe(2);
-        expect(result.failedProviders).toContain('groq/llama-3.3-70b-versatile');
+        // getCandidateModels pre-filters unavailable providers, so attempts = 1
+        expect(result.attempts).toBe(1);
     });
 
     it('escalates to a higher tier when all models in primary tier are down', () => {
@@ -116,7 +120,6 @@ describe('findAvailableModel', () => {
 
         expect(result.tier).toBe('economical');
         expect(result.provider).toBe('deepseek');
-        expect(result.failedProviders.length).toBeGreaterThan(0);
     });
 
     it('escalates from premium to frontier when premium providers are down', () => {
@@ -143,14 +146,14 @@ describe('findAvailableModel', () => {
         );
     });
 
-    it('tracks all failed providers in failedProviders array', () => {
-        // Only the last model (frontier anthropic) is available
+    it('finds available provider even when many others are down', () => {
+        // Only anthropic is available — should find it in premium tier
         const registry = makeRegistry({ anthropic: true });
         const result = findAvailableModel('free', config, registry, logger);
 
-        // Should have failed groq and google in free, groq and deepseek in economical, then found anthropic in premium
-        expect(result.failedProviders.length).toBeGreaterThan(0);
         expect(result.provider).toBe('anthropic');
+        // getCandidateModels pre-filters, so first healthy candidate is returned
+        expect(result.attempts).toBe(1);
     });
 
     it('logs tier escalation when failover to different tier', () => {

@@ -247,6 +247,33 @@ ${recentRows}
             },
         });
 
+        // Add virtual task-type models
+        const virtualModels = [
+            { id: 'pharos-code', displayName: 'Pharos Code Router', description: 'Auto-routes with code-optimized model selection' },
+            { id: 'pharos-math', displayName: 'Pharos Math Router', description: 'Auto-routes with math-optimized model selection' },
+            { id: 'pharos-reasoning', displayName: 'Pharos Reasoning Router', description: 'Auto-routes with reasoning-optimized model selection' },
+            { id: 'pharos-creative', displayName: 'Pharos Creative Router', description: 'Auto-routes with creative-optimized model selection' },
+            { id: 'pharos-analysis', displayName: 'Pharos Analysis Router', description: 'Auto-routes with analysis-optimized model selection' },
+            { id: 'pharos-conversation', displayName: 'Pharos Conversation Router', description: 'Auto-routes with conversation-optimized model selection' },
+        ];
+        for (const vm of virtualModels) {
+            models.push({
+                id: vm.id,
+                object: 'model',
+                created,
+                owned_by: 'pharos',
+                pharos: {
+                    provider: 'pharos',
+                    displayName: vm.displayName,
+                    tier: 'auto',
+                    contextWindow: null,
+                    capabilities: [vm.id.replace('pharos-', '')],
+                    pricing: null,
+                    speed: null,
+                },
+            });
+        }
+
         // Add all configured models (deduplicated across tiers)
         for (const [tierName, tierConfig] of Object.entries(config.tiers)) {
             for (const modelEntry of tierConfig.models) {
@@ -385,6 +412,16 @@ ${recentRows}
 
             // 3. Determine routing
             const directModel = router.resolveDirectModel(body.model);
+            const taskTypeOverride = router.resolveTaskTypeOverride(body.model ?? '');
+
+            // Apply task-type override from virtual model names (e.g. pharos-code)
+            if (taskTypeOverride) {
+                classification = { ...classification, type: taskTypeOverride };
+                logger.info(
+                    { requestId, taskTypeOverride, score: classification.score },
+                    'Task type overridden by virtual model name',
+                );
+            }
 
             if (directModel) {
                 // Client requested a specific model — bypass classification routing
@@ -398,7 +435,7 @@ ${recentRows}
                     'Direct route (classification bypassed for routing)',
                 );
             } else {
-                // Normal routing via classifier
+                // Normal routing via classifier (with affinity)
                 routing = router.route(classification);
             }
 
