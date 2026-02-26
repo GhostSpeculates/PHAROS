@@ -148,9 +148,10 @@ src/
 ├── registry/
 │   └── models.ts                     # Model metadata catalog (capabilities, pricing, speed)
 ├── router/
-│   ├── index.ts                      # ModelRouter
+│   ├── index.ts                      # ModelRouter (incl. task-type overrides)
 │   ├── tier-resolver.ts              # Score→tier logic
-│   └── failover.ts                   # Failover chain
+│   ├── affinity.ts                   # Task-type affinity sorting
+│   └── failover.ts                   # Failover chain (affinity-aware)
 ├── tracking/
 │   ├── store.ts                      # SQLite TrackingStore (incl. classifier_provider column)
 │   ├── cost-calculator.ts            # Pricing table + calculations
@@ -206,13 +207,17 @@ src/
 - `presence_penalty` and `frequency_penalty` forwarded to providers
 - Extended thinking passthrough for Anthropic models
 - Groq rejects some requests at runtime (~12K+ tokens) despite 128K advertised limit — failover handles this gracefully
+- Task-type affinity: within each tier, models are sorted by task-type preference (code→DeepSeek, reasoning→Anthropic, etc.)
+- Virtual model names: `pharos-code`, `pharos-math`, `pharos-reasoning`, `pharos-creative`, `pharos-analysis`, `pharos-conversation` force a task type while using classifier for complexity
+- Affinity config: `taskAffinity` in YAML overrides defaults from `src/router/affinity.ts`
+- 10 task types: greeting, lookup, analysis, planning, creative, code, reasoning, tool_use, math, conversation
 
 ## Testing
 
 - **Framework**: Vitest 4
 - **Test files**: `src/__tests__/*.test.ts`
-- **Coverage**: tier-resolver (23), cost-calculator (25), auth middleware (9), ID generators (10), config schema (52), classifier (17), failover (15), tracking-store (30), router (15), context (26), stream (10), providers (118), alerts (26), self-test (15), semaphore (16), lru-cache (10), agent-rate-limit (12), retry (40), registry (22)
-- **Total**: 982 tests, all passing (491 src + 491 dist)
+- **Coverage**: tier-resolver (23), cost-calculator (25), auth middleware (9), ID generators (10), config schema (52), classifier (21), failover (15), tracking-store (30), router (35), context (26), stream (10), providers (118), alerts (26), self-test (15), semaphore (16), lru-cache (10), agent-rate-limit (12), retry (40), registry (22), affinity (18)
+- **Total**: 1066 tests, all passing (533 src + 533 dist)
 - Run: `npm test` or `npm run test:watch`
 
 ## Alerts & Monitoring
@@ -250,7 +255,7 @@ src/
 - **Phase 2 (Universal Intelligent Router)**: IN PROGRESS — see PRODUCT.md for full blueprint
   - **Phase 2A**: ✅ Provider expansion — Together AI + Fireworks AI (5 new models)
   - **Phase 2B**: ✅ Model registry — `src/registry/models.ts` with capabilities, pricing, speed metadata
-  - Task-type-aware routing (complexity × task type → optimal model)
+  - **Phase 2C**: ✅ Task-type-aware routing — affinity system, virtual model names (pharos-code, pharos-math, etc.)
   - Performance learning + auto-tuned routing weights
 - **Phase 3 (Dashboard)**: NOT STARTED — web UI, model registry browser, routing visualization
 - **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker Hub, docs site, community registry

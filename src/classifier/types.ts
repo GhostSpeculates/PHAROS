@@ -11,6 +11,8 @@ export const TASK_TYPES = [
     'code',
     'reasoning',
     'tool_use',
+    'math',
+    'conversation',
 ] as const;
 
 export type TaskType = (typeof TASK_TYPES)[number];

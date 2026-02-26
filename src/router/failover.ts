@@ -3,6 +3,7 @@ import type { ProviderRegistry } from '../providers/index.js';
 import type { Logger } from '../utils/logger.js';
 import { getTierFailoverOrder } from './tier-resolver.js';
 import { sendAlert } from '../utils/alerts.js';
+import { sortByAffinity } from './affinity.js';
 
 export interface FailoverResult {
     provider: string;
@@ -31,7 +32,41 @@ export function findAvailableModel(
     config: PharosConfig,
     registry: ProviderRegistry,
     logger: Logger,
+    taskType?: string,
+    affinityMap?: Record<string, string[]>,
 ): FailoverResult {
+    // Build candidates with affinity sorting
+    const candidates = getCandidateModels(primaryTier, config, registry);
+    const sorted = (taskType && affinityMap)
+        ? sortByAffinity(candidates, taskType, affinityMap)
+        : candidates;
+
+    // Try each candidate in order
+    if (sorted.length > 0) {
+        const first = sorted[0];
+        // Count attempts for backward compat
+        const attempts = candidates.indexOf(first) + 1;
+        const failedProviders = candidates
+            .slice(0, candidates.indexOf(first))
+            .map(c => `${c.provider}/${c.model}`);
+
+        if (first.tier !== primaryTier) {
+            logger.info(
+                { from: primaryTier, to: first.tier, model: first.model },
+                'Failover: escalated to different tier',
+            );
+        }
+
+        return {
+            provider: first.provider,
+            model: first.model,
+            tier: first.tier,
+            attempts: failedProviders.length + 1,
+            failedProviders,
+        };
+    }
+
+    // Fall through — no candidates at all
     const tierOrder = getTierFailoverOrder(primaryTier);
     const failedProviders: string[] = [];
     let attempts = 0;
@@ -42,25 +77,7 @@ export function findAvailableModel(
 
         for (const modelEntry of tier.models) {
             attempts++;
-
-            if (registry.isAvailable(modelEntry.provider)) {
-                if (tierName !== primaryTier) {
-                    logger.info(
-                        { from: primaryTier, to: tierName, model: modelEntry.model },
-                        'Failover: escalated to different tier',
-                    );
-                }
-
-                return {
-                    provider: modelEntry.provider,
-                    model: modelEntry.model,
-                    tier: tierName,
-                    attempts,
-                    failedProviders,
-                };
-            } else {
-                failedProviders.push(`${modelEntry.provider}/${modelEntry.model}`);
-            }
+            failedProviders.push(`${modelEntry.provider}/${modelEntry.model}`);
         }
     }
 

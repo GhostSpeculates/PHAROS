@@ -117,6 +117,13 @@ export const LoggingConfigSchema = z.object({
     pretty: z.boolean().default(true),
 });
 
+// ─── Task Affinity configuration ───
+// Maps task types to preferred provider order for model selection within a tier
+export const TaskAffinitySchema = z.record(
+    z.string(),
+    z.array(z.string()),
+).default({});
+
 // ─── Spending limits configuration ───
 export const SpendingConfigSchema = z.object({
     dailyLimit: z.number().positive().nullable().default(null),
@@ -171,6 +178,7 @@ export const PharosConfigSchema = z.object({
         }),
     providers: z.record(z.string(), ProviderConfigSchema).default({}),
     pricing: z.array(PricingEntrySchema).optional(),
+    taskAffinity: TaskAffinitySchema.default({}),
     spending: SpendingConfigSchema.default({}),
     tracking: TrackingConfigSchema.default({}),
     logging: LoggingConfigSchema.default({}),
