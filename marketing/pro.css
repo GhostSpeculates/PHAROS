@@ -1,0 +1,838 @@
+/* ============================================================
+   PHAROS — Professional Landing Page v2
+   Dulcedo DNA · Sand Dune Theme · Nex Labs Quality
+   ============================================================ */
+
+/* === Reset & Foundation === */
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    /* Desert Palette — 3 colors only */
+    --black: #0A0806;
+    --sand: #E8DFD0;
+    --gold: #C4A265;
+
+    /* Supporting tones */
+    --sand-dark: #D4C9B8;
+    --text-light: #E8DFD0;
+    --text-muted: #8B8477;
+    --text-dark: #1A1714;
+    --gold-bright: #D4B275;
+    --gold-dim: rgba(196, 162, 101, 0.15);
+
+    /* Typography */
+    --serif: 'Cormorant Garamond', 'Georgia', serif;
+    --sans: 'Outfit', 'Helvetica Neue', sans-serif;
+
+    /* Spacing */
+    --section-pad: clamp(100px, 12vw, 180px);
+    --content-max: 1200px;
+    --content-narrow: 800px;
+}
+
+html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    font-family: var(--sans);
+    font-weight: 300;
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--text-light);
+    background: var(--black);
+    overflow-x: hidden;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+::selection {
+    background: var(--gold);
+    color: var(--black);
+}
+
+/* === Navigation === */
+.nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    padding: 0 clamp(24px, 4vw, 60px);
+    height: 80px;
+    transition: background 0.4s ease, backdrop-filter 0.4s ease;
+}
+
+.nav.scrolled {
+    background: rgba(10, 8, 6, 0.85);
+    backdrop-filter: blur(12px);
+}
+
+.nav-inner {
+    max-width: 1400px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.nav-left,
+.nav-right {
+    display: flex;
+    gap: 32px;
+    align-items: center;
+}
+
+.nav-link {
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    transition: color 0.2s ease;
+}
+
+.nav-link:hover {
+    color: var(--gold);
+}
+
+.nav-brand {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 6px;
+    color: var(--text-light);
+}
+
+/* === Hero === */
+.hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px clamp(24px, 4vw, 60px) 60px;
+    overflow: hidden;
+    background:
+        url('assets/sand-texture.png') center / cover no-repeat,
+        var(--black);
+    background-blend-mode: overlay;
+}
+
+.hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 60% 60% at 50% 50%,
+            rgba(196, 162, 101, 0.06) 0%,
+            transparent 70%);
+    pointer-events: none;
+}
+
+/* Thin gold arc — Dulcedo-style */
+.hero-arc {
+    position: absolute;
+    width: 800px;
+    height: 800px;
+    border: 1px solid rgba(196, 162, 101, 0.12);
+    border-radius: 50%;
+    top: calc(50% - 400px);
+    left: calc(50% - 400px);
+    pointer-events: none;
+}
+
+.hero-inner {
+    text-align: center;
+    position: relative;
+    z-index: 2;
+}
+
+.hero-above {
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 24px;
+}
+
+.hero-title {
+    font-family: var(--serif);
+    font-size: clamp(80px, 14vw, 180px);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    line-height: 0.9;
+    color: var(--text-light);
+    margin-bottom: 32px;
+}
+
+.hero-sub {
+    font-size: clamp(15px, 1.4vw, 18px);
+    font-weight: 300;
+    color: var(--text-muted);
+    line-height: 1.8;
+}
+
+.hero-image {
+    position: relative;
+    z-index: 2;
+    margin-top: 60px;
+    max-width: 700px;
+    border-radius: 4px;
+    overflow: hidden;
+    opacity: 0.9;
+}
+
+.hero-bottom {
+    position: absolute;
+    bottom: 48px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: clamp(40px, 6vw, 100px);
+    z-index: 2;
+}
+
+.hero-stat {
+    text-align: center;
+}
+
+.hero-stat-num {
+    display: block;
+    font-family: var(--serif);
+    font-size: clamp(28px, 3.5vw, 48px);
+    font-weight: 600;
+    color: var(--gold);
+    letter-spacing: 2px;
+}
+
+.hero-stat-label {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* === Statement === */
+.statement {
+    padding: var(--section-pad) clamp(24px, 4vw, 60px);
+    background: var(--black);
+}
+
+.content-narrow {
+    max-width: var(--content-narrow);
+    margin: 0 auto;
+}
+
+.content-wide {
+    max-width: var(--content-max);
+    margin: 0 auto;
+}
+
+.statement-heading {
+    font-family: var(--serif);
+    font-size: clamp(40px, 6vw, 80px);
+    font-weight: 600;
+    line-height: 1.0;
+    letter-spacing: 0.02em;
+    color: var(--text-light);
+    margin-bottom: 48px;
+}
+
+.statement-body {
+    font-size: clamp(15px, 1.2vw, 17px);
+    font-weight: 300;
+    color: var(--text-muted);
+    line-height: 1.9;
+    margin-bottom: 24px;
+}
+
+.statement-body:last-child {
+    margin-bottom: 0;
+}
+
+/* === Rock Divider === */
+.rock-section {
+    position: relative;
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    overflow: hidden;
+    background: var(--black);
+}
+
+.rock-img {
+    position: absolute;
+    width: clamp(200px, 25vw, 350px);
+    height: auto;
+    opacity: 0.7;
+    filter: saturate(0.5) brightness(0.8);
+}
+
+.rock-left {
+    left: 5%;
+    bottom: -20%;
+}
+
+.sand-strip {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, transparent, var(--gold-dim), var(--gold), var(--gold-dim), transparent);
+}
+
+/* === Section Patterns === */
+.section-dark {
+    padding: var(--section-pad) clamp(24px, 4vw, 60px);
+    background: var(--black);
+}
+
+.section-sand {
+    padding: var(--section-pad) clamp(24px, 4vw, 60px);
+    background: var(--sand);
+    position: relative;
+}
+
+/* Sand sections get the texture overlay */
+.section-sand::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url('assets/sand-texture.png') center / cover no-repeat;
+    opacity: 0.08;
+    pointer-events: none;
+}
+
+.section-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 20px;
+}
+
+.section-label-dark {
+    color: var(--gold);
+}
+
+.section-title {
+    font-family: var(--serif);
+    font-size: clamp(36px, 5.5vw, 72px);
+    font-weight: 600;
+    line-height: 1.0;
+    letter-spacing: 0.02em;
+    color: var(--text-light);
+    margin-bottom: 24px;
+}
+
+.section-title-dark {
+    color: var(--text-dark);
+}
+
+.section-sub {
+    font-size: 16px;
+    font-weight: 300;
+    color: var(--text-muted);
+    margin-bottom: 80px;
+}
+
+/* === Flow (How It Works) === */
+.flow {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    margin-top: 80px;
+}
+
+.flow-item {
+    flex: 1;
+    padding: 40px;
+}
+
+.flow-line {
+    width: 1px;
+    background: var(--gold-dim);
+    align-self: stretch;
+    margin: 20px 0;
+}
+
+.flow-num {
+    font-family: var(--serif);
+    font-size: 48px;
+    font-weight: 300;
+    color: var(--gold);
+    display: block;
+    margin-bottom: 20px;
+    line-height: 1;
+}
+
+.flow-heading {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 3px;
+    color: var(--text-light);
+    margin-bottom: 16px;
+}
+
+.flow-desc {
+    font-size: 15px;
+    font-weight: 300;
+    color: var(--text-muted);
+    line-height: 1.8;
+}
+
+/* === Tiers === */
+.tiers {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    margin-top: 80px;
+    position: relative;
+    background: rgba(26, 23, 20, 0.1);
+}
+
+.tier {
+    padding: 40px 32px;
+    background: var(--sand);
+    position: relative;
+    z-index: 1;
+}
+
+.tier-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(26, 23, 20, 0.1);
+}
+
+.tier-score {
+    font-family: var(--serif);
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--text-dark);
+}
+
+.tier-name {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    color: var(--gold);
+}
+
+.tier-pct {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-dark);
+    margin-bottom: 16px;
+    opacity: 0.7;
+}
+
+.tier-example {
+    font-size: 14px;
+    font-style: italic;
+    font-weight: 300;
+    color: var(--text-dark);
+    opacity: 0.6;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.tier-models {
+    font-size: 12px;
+    font-weight: 300;
+    color: var(--text-dark);
+    opacity: 0.5;
+    margin-bottom: 24px;
+}
+
+.tier-cost {
+    font-family: var(--serif);
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+/* === Comparison Grid === */
+.compare-grid {
+    margin-top: 60px;
+}
+
+.compare-row {
+    display: grid;
+    grid-template-columns: 2fr repeat(4, 1fr);
+    padding: 20px 0;
+    border-bottom: 1px solid rgba(196, 162, 101, 0.08);
+    font-size: 14px;
+    font-weight: 300;
+    color: var(--text-muted);
+    align-items: center;
+}
+
+.compare-header {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid rgba(196, 162, 101, 0.2);
+    padding-bottom: 16px;
+}
+
+.compare-highlight {
+    color: var(--gold);
+    font-weight: 400;
+}
+
+/* === Terminal / Code === */
+.terminal {
+    margin-top: 80px;
+    background: #0D0B09;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(196, 162, 101, 0.08);
+    position: relative;
+    z-index: 1;
+}
+
+.terminal-bar {
+    padding: 14px 18px;
+    display: flex;
+    gap: 8px;
+    background: rgba(196, 162, 101, 0.04);
+}
+
+.terminal-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(196, 162, 101, 0.2);
+}
+
+.terminal-code {
+    padding: 32px;
+    font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--sand-dark);
+    overflow-x: auto;
+}
+
+.c-dim {
+    color: #665E52;
+}
+
+.c-str {
+    color: var(--gold);
+}
+
+.c-gold {
+    color: var(--gold-bright);
+    font-weight: 500;
+}
+
+.c-strike {
+    text-decoration: line-through;
+}
+
+/* Steps */
+.steps {
+    margin-top: 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: relative;
+    z-index: 1;
+}
+
+.step {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 20px 24px;
+    background: rgba(26, 23, 20, 0.04);
+    border: 1px solid rgba(26, 23, 20, 0.08);
+    border-radius: 4px;
+}
+
+.step-n {
+    font-family: var(--serif);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--gold);
+    flex-shrink: 0;
+}
+
+.step code {
+    font-family: 'SFMono-Regular', 'Consolas', monospace;
+    font-size: 13px;
+    color: var(--text-dark);
+    opacity: 0.7;
+}
+
+/* === Features === */
+.features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    margin-top: 60px;
+    background: rgba(196, 162, 101, 0.06);
+}
+
+.feature {
+    padding: 48px 40px;
+    background: var(--black);
+}
+
+.feature h3 {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    color: var(--text-light);
+    margin-bottom: 16px;
+}
+
+.feature p {
+    font-size: 14px;
+    font-weight: 300;
+    color: var(--text-muted);
+    line-height: 1.7;
+}
+
+/* === CTA === */
+.cta {
+    padding: var(--section-pad) clamp(24px, 4vw, 60px);
+    background: var(--sand);
+    text-align: center;
+    position: relative;
+}
+
+.cta::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url('assets/sand-texture.png') center / cover no-repeat;
+    opacity: 0.07;
+    pointer-events: none;
+}
+
+.cta-label {
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 3px;
+    color: var(--gold);
+    margin-bottom: 24px;
+    position: relative;
+}
+
+.cta-title {
+    font-family: var(--serif);
+    font-size: clamp(48px, 8vw, 120px);
+    font-weight: 600;
+    line-height: 0.95;
+    letter-spacing: 0.02em;
+    color: var(--text-dark);
+    margin-bottom: 48px;
+    position: relative;
+}
+
+.btn {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 16px 40px;
+    border: 1px solid var(--text-dark);
+    border-radius: 100px;
+    color: var(--text-dark);
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.btn:hover {
+    background: var(--text-dark);
+    color: var(--sand);
+}
+
+/* === Footer === */
+.footer {
+    background: var(--black);
+    padding: 120px clamp(24px, 4vw, 60px) 60px;
+}
+
+.footer-brand {
+    font-family: var(--serif);
+    font-size: clamp(80px, 18vw, 240px);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--gold);
+    text-align: center;
+    line-height: 0.85;
+    opacity: 0.5;
+    margin-bottom: 80px;
+    overflow: hidden;
+}
+
+.footer-inner {
+    max-width: var(--content-max);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 40px;
+    padding-bottom: 80px;
+    border-bottom: 1px solid rgba(196, 162, 101, 0.1);
+}
+
+.footer-col h4 {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 3px;
+    color: var(--gold);
+    margin-bottom: 20px;
+}
+
+.footer-col a {
+    display: block;
+    font-size: 14px;
+    font-weight: 300;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    transition: color 0.2s ease;
+}
+
+.footer-col a:hover {
+    color: var(--gold);
+}
+
+.footer-bottom {
+    max-width: var(--content-max);
+    margin: 40px auto 0;
+    text-align: center;
+}
+
+.footer-bottom p {
+    font-size: 13px;
+    font-weight: 300;
+    color: var(--text-muted);
+    line-height: 1.8;
+    opacity: 0.6;
+}
+
+.footer-copy {
+    margin-top: 20px;
+    font-size: 11px;
+    letter-spacing: 1px;
+}
+
+/* === Scroll Reveal === */
+.reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+
+.reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* === Responsive === */
+@media (max-width: 1024px) {
+    .flow {
+        flex-direction: column;
+    }
+
+    .flow-line {
+        width: 100%;
+        height: 1px;
+        margin: 0;
+    }
+
+    .tiers {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .features {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .compare-row {
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 768px) {
+
+    .nav-left,
+    .nav-right {
+        display: none;
+    }
+
+    .hero-bottom {
+        gap: 32px;
+    }
+
+    .tiers {
+        grid-template-columns: 1fr;
+    }
+
+    .features {
+        grid-template-columns: 1fr;
+    }
+
+    .compare-grid {
+        overflow-x: auto;
+    }
+
+    .compare-row {
+        min-width: 600px;
+    }
+
+    .footer-inner {
+        grid-template-columns: 1fr;
+        gap: 40px;
+    }
+
+    .flow-item {
+        padding: 24px 0;
+    }
+}
+
+/* Subtle grain overlay on entire page */
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 256px 256px;
+}
