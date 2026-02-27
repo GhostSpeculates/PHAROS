@@ -40,7 +40,11 @@
       "Bash(ssh root@187.77.0.157 \"mkdir -p /etc/systemd/journald.conf.d && cat > /etc/systemd/journald.conf.d/pharos.conf << 'EOF'\n[Journal]\nSystemMaxUse=500M\nSystemMaxFileSize=50M\nEOF\ncat /etc/systemd/journald.conf.d/pharos.conf && systemctl restart systemd-journald\")",
       "Bash(npx tsc --noEmit 2>&1)",
       "Bash(npm test 2>&1)",
-      "Bash(ssh root@187.77.0.157 \"grep MOONSHOT /root/pharos/.env || echo 'MOONSHOT_API_KEY not found, adding...' && echo 'MOONSHOT_API_KEY=sk-xL6j1pipQZnCi7bBnEqRJvra3r4lzRcCB9HOiKoDUba00dkP' >> /root/pharos/.env && grep MOONSHOT /root/pharos/.env\")"
+      "Bash(ssh root@187.77.0.157 \"grep MOONSHOT /root/pharos/.env || echo 'MOONSHOT_API_KEY not found, adding...' && echo 'MOONSHOT_API_KEY=sk-xL6j1pipQZnCi7bBnEqRJvra3r4lzRcCB9HOiKoDUba00dkP' >> /root/pharos/.env && grep MOONSHOT /root/pharos/.env\")",
+      "Bash(npm run:*)",
+      "Bash(claude mcp:*)",
+      "Bash(DISCORD_TOKEN=\"MTQ3NjY0MDczMTI0MTM4NjIwNA.GtseID.8geQEORL3d6uJ9rgGqLmLLN-68AWc4DtzVFzAA\" timeout 15 node:*)",
+      "Bash(git:*)"
     ]
   }
 }
