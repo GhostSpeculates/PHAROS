@@ -10,21 +10,16 @@
 
     // ── Lenis Smooth Scroll ──────────────────────────────
     const lenis = new Lenis({
-        duration: 1.2,
+        duration: 0.7,
         easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-        smooth: true,
+        wheelMultiplier: 1.2,
+        touchMultiplier: 2,
+        smoothWheel: true,
     });
 
-    function raf(time) {
-        lenis.raf(time);
-        requestAnimationFrame(raf);
-    }
-    requestAnimationFrame(raf);
-
-    // Sync Lenis with ScrollTrigger
+    // Single RAF loop through GSAP ticker (no double-calling)
     lenis.on('scroll', ScrollTrigger.update);
     gsap.ticker.add((time) => lenis.raf(time * 1000));
-    gsap.ticker.lagSmoothing(0);
 
     // ── Nav Scroll ───────────────────────────────────────
     const nav = document.querySelector('.nav');
