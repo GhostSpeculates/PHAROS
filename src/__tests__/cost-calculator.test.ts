@@ -6,13 +6,13 @@ import { calculateCost, calculateBaselineCost } from '../tracking/cost-calculato
 // ────────────────────────────────────────────────────────────────
 describe('calculateCost', () => {
     describe('known models', () => {
-        it('gemini-2.0-flash is free (both input and output cost $0)', () => {
-            const cost = calculateCost('google', 'gemini-2.0-flash', 1000, 1000);
+        it('gemini-2.5-flash is free (both input and output cost $0)', () => {
+            const cost = calculateCost('google', 'gemini-2.5-flash', 1000, 1000);
             expect(cost).toBe(0);
         });
 
-        it('gemini-2.0-flash is free even with large token counts', () => {
-            const cost = calculateCost('google', 'gemini-2.0-flash', 1_000_000, 1_000_000);
+        it('gemini-2.5-flash is free even with large token counts', () => {
+            const cost = calculateCost('google', 'gemini-2.5-flash', 1_000_000, 1_000_000);
             expect(cost).toBe(0);
         });
 
@@ -150,7 +150,7 @@ describe('calculateBaselineCost', () => {
             const tokensIn = 100_000;
             const tokensOut = 50_000;
 
-            const actual = calculateCost('google', 'gemini-2.0-flash', tokensIn, tokensOut);
+            const actual = calculateCost('google', 'gemini-2.5-flash', tokensIn, tokensOut);
             const baseline = calculateBaselineCost(tokensIn, tokensOut, 3.0, 15.0);
 
             expect(actual).toBe(0);

@@ -36,7 +36,7 @@ function makeConfig(apiKey: string): PharosConfig {
         server: { port: 3777, host: '0.0.0.0' },
         auth: { apiKey },
         classifier: {
-            providers: [{ provider: 'google', model: 'gemini-2.0-flash' }],
+            providers: [{ provider: 'google', model: 'gemini-2.5-flash' }],
             fallbackTier: 'economical',
             timeoutMs: 3000,
             maxConcurrent: 5,
@@ -44,7 +44,7 @@ function makeConfig(apiKey: string): PharosConfig {
             cacheTtlMs: 30000,
         },
         tiers: {
-            free: { scoreRange: [1, 3], models: [{ provider: 'google', model: 'gemini-2.0-flash' }] },
+            free: { scoreRange: [1, 3], models: [{ provider: 'google', model: 'gemini-2.5-flash' }] },
             economical: { scoreRange: [4, 6], models: [{ provider: 'deepseek', model: 'deepseek-chat' }] },
             premium: { scoreRange: [7, 8], models: [{ provider: 'anthropic', model: 'claude-sonnet-4-20250514' }] },
             frontier: { scoreRange: [9, 10], models: [{ provider: 'anthropic', model: 'claude-opus-4-20250514' }] },

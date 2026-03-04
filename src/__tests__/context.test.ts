@@ -13,8 +13,8 @@ describe('getContextWindow', () => {
         expect(getContextWindow('claude-opus-4-20250514')).toBe(200_000);
     });
 
-    it('returns known context window for gemini-2.0-flash', () => {
-        expect(getContextWindow('gemini-2.0-flash')).toBe(1_048_576);
+    it('returns known context window for gemini-2.5-flash', () => {
+        expect(getContextWindow('gemini-2.5-flash')).toBe(1_048_576);
     });
 
     it('returns default (128K) for unknown model', () => {

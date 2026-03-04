@@ -1251,11 +1251,11 @@ describe('GoogleProvider', () => {
       });
 
       const response = await provider.chat(
-        makeRequest({ model: 'gemini-2.0-flash' }),
+        makeRequest({ model: 'gemini-2.5-flash' }),
       );
 
       expect(response.content).toBe('Hello back!');
-      expect(response.model).toBe('gemini-2.0-flash');
+      expect(response.model).toBe('gemini-2.5-flash');
       expect(response.usage.promptTokens).toBe(12);
       expect(response.usage.completionTokens).toBe(8);
       expect(response.usage.totalTokens).toBe(20);

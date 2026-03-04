@@ -22,7 +22,7 @@ function makeConfig(): PharosConfig {
         tiers: {
             free: {
                 scoreRange: [1, 3],
-                models: [{ provider: 'google', model: 'gemini-2.0-flash' }],
+                models: [{ provider: 'google', model: 'gemini-2.5-flash' }],
             },
             economical: {
                 scoreRange: [4, 6],

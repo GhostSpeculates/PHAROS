@@ -7,7 +7,7 @@ import type { PharosConfig } from '../config/schema.js';
  */
 function makeConfig(overrides?: Partial<PharosConfig['tiers']>): PharosConfig {
     const defaultTiers: PharosConfig['tiers'] = {
-        free: { scoreRange: [1, 3], models: [{ provider: 'google', model: 'gemini-2.0-flash' }] },
+        free: { scoreRange: [1, 3], models: [{ provider: 'google', model: 'gemini-2.5-flash' }] },
         economical: { scoreRange: [4, 6], models: [{ provider: 'deepseek', model: 'deepseek-chat' }] },
         premium: { scoreRange: [7, 8], models: [{ provider: 'anthropic', model: 'claude-sonnet-4-20250514' }] },
         frontier: { scoreRange: [9, 10], models: [{ provider: 'anthropic', model: 'claude-opus-4-20250514' }] },
@@ -17,7 +17,7 @@ function makeConfig(overrides?: Partial<PharosConfig['tiers']>): PharosConfig {
         server: { port: 3777, host: '0.0.0.0' },
         auth: { apiKey: '' },
         classifier: {
-            providers: [{ provider: 'google', model: 'gemini-2.0-flash' }],
+            providers: [{ provider: 'google', model: 'gemini-2.5-flash' }],
             fallbackTier: 'economical',
             timeoutMs: 3000,
             maxConcurrent: 5,
@@ -106,7 +106,7 @@ describe('resolveTier', () => {
     describe('custom tier configs', () => {
         it('resolves correctly with a wider free tier (1-5)', () => {
             const custom = makeConfig({
-                free: { scoreRange: [1, 5], models: [{ provider: 'google', model: 'gemini-2.0-flash' }] },
+                free: { scoreRange: [1, 5], models: [{ provider: 'google', model: 'gemini-2.5-flash' }] },
                 economical: { scoreRange: [6, 7], models: [{ provider: 'deepseek', model: 'deepseek-chat' }] },
                 premium: { scoreRange: [8, 9], models: [{ provider: 'anthropic', model: 'claude-sonnet-4-20250514' }] },
                 frontier: { scoreRange: [10, 10], models: [{ provider: 'anthropic', model: 'claude-opus-4-20250514' }] },
@@ -123,7 +123,7 @@ describe('resolveTier', () => {
 
         it('resolves with a single-score tier (frontier = 10 only)', () => {
             const custom = makeConfig({
-                free: { scoreRange: [1, 4], models: [{ provider: 'google', model: 'gemini-2.0-flash' }] },
+                free: { scoreRange: [1, 4], models: [{ provider: 'google', model: 'gemini-2.5-flash' }] },
                 economical: { scoreRange: [5, 7], models: [{ provider: 'deepseek', model: 'deepseek-chat' }] },
                 premium: { scoreRange: [8, 9], models: [{ provider: 'anthropic', model: 'claude-sonnet-4-20250514' }] },
                 frontier: { scoreRange: [10, 10], models: [{ provider: 'anthropic', model: 'claude-opus-4-20250514' }] },
