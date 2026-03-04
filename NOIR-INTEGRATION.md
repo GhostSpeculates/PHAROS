@@ -24,7 +24,7 @@ This document covers how to connect **Noir** -- an AI Discord bot running OpenCl
 
 ```
 Noir Agent  -->  OpenClaw  -->  Anthropic API (claude-sonnet / claude-haiku)
-                            -->  Google API (gemini-2.0-flash)
+                            -->  Google API (gemini-2.5-flash)
 
 Every request goes directly to the provider at full price.
 ```
@@ -148,7 +148,7 @@ Noir has 7 agents. Here is the recommended Pharos configuration for each:
 | **smarthome** (Nex Labs) | Business operations | `anthropic/claude-haiku-4-5-20251001` | `openai/pharos-auto` | Business tasks range from simple status checks to complex planning. Pharos routes each appropriately. |
 | **research** | Web search, news | `anthropic/claude-haiku-4-5-20251001` | `openai/pharos-auto` | Most research queries are factual lookups (score 2-4). Pharos will use free models for these. Complex research synthesis gets upgraded automatically. |
 | **finance** | Calculations, tracking | `anthropic/claude-haiku-4-5-20251001` | `openai/pharos-auto` | Financial calculations are moderate complexity (score 3-6). Pharos uses economical models for these, saving significantly vs. Haiku while maintaining accuracy. |
-| **worker** | Background tasks | `google/gemini-2.0-flash` | `openai/pharos-auto` | Already on a free-tier model. Pharos will keep routing simple worker tasks to free models (Gemini Flash, Groq). No cost increase, but gains failover protection. |
+| **worker** | Background tasks | `google/gemini-2.5-flash` | `openai/pharos-auto` | Already on a free-tier model. Pharos will keep routing simple worker tasks to free models (Gemini Flash, Groq). No cost increase, but gains failover protection. |
 
 ### Migration Strategy
 
@@ -345,7 +345,7 @@ You should see log entries like:
 
 ```
 INFO: Request received { requestId: "req_...", model: "pharos-auto", messageCount: 3 }
-INFO: -> Routed { tier: "free", provider: "google", model: "gemini-2.0-flash", score: 2 }
+INFO: -> Routed { tier: "free", provider: "google", model: "gemini-2.5-flash", score: 2 }
 INFO: Completed { cost: "$0.000000", latencyMs: 1200 }
 ```
 
@@ -398,7 +398,7 @@ When Pharos receives a request, the `model` field determines routing:
 | `pharos-auto` | Classify the query, route to optimal tier and model |
 | `auto` | Same as `pharos-auto` |
 | `claude-sonnet-4-20250514` | Direct route to Anthropic Claude Sonnet (bypasses classifier for routing) |
-| `gemini-2.0-flash` | Direct route to Google Gemini Flash |
+| `gemini-2.5-flash` | Direct route to Google Gemini Flash |
 | Any unknown model name | Falls back to classifier-based routing |
 
 ---
@@ -521,7 +521,7 @@ Every response from Pharos includes metadata headers:
 | Header | Description | Example |
 |--------|-------------|---------|
 | `X-Pharos-Tier` | Which tier handled the request | `free` |
-| `X-Pharos-Model` | Which model was used | `gemini-2.0-flash` |
+| `X-Pharos-Model` | Which model was used | `gemini-2.5-flash` |
 | `X-Pharos-Provider` | Which provider was used | `google` |
 | `X-Pharos-Score` | Complexity score (1-10) | `3` |
 | `X-Pharos-Cost` | Estimated cost in USD | `0.000000` |

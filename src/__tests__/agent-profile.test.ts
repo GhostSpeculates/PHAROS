@@ -29,7 +29,7 @@ function makeConfig(agents: Record<string, any> = {}): PharosConfig {
             baselineCostPerMillionOutput: 15.0,
         },
         logging: { level: 'info', pretty: true },
-    } as PharosConfig;
+    } as unknown as PharosConfig;
 }
 
 // ─── Tests ───────────────────────────────────────────────

@@ -26,7 +26,7 @@ describe('PharosConfigSchema', () => {
                 expect(result.data.server.host).toBe('0.0.0.0');
                 expect(result.data.auth.apiKey).toBe('');
                 expect(result.data.classifier.providers).toEqual([
-                    { provider: 'google', model: 'gemini-2.0-flash' },
+                    { provider: 'google', model: 'gemini-2.5-flash' },
                 ]);
                 expect(result.data.tracking.enabled).toBe(true);
                 expect(result.data.logging.level).toBe('info');
@@ -44,7 +44,7 @@ describe('PharosConfigSchema', () => {
                     timeoutMs: 3000,
                 },
                 tiers: {
-                    free: { scoreRange: [1, 3], models: [{ provider: 'google', model: 'gemini-2.0-flash' }] },
+                    free: { scoreRange: [1, 3], models: [{ provider: 'google', model: 'gemini-2.5-flash' }] },
                     economical: { scoreRange: [4, 6], models: [{ provider: 'deepseek', model: 'deepseek-chat' }] },
                     premium: { scoreRange: [7, 8], models: [{ provider: 'anthropic', model: 'claude-sonnet-4-20250514' }] },
                     frontier: { scoreRange: [9, 10], models: [{ provider: 'anthropic', model: 'claude-opus-4-20250514' }] },
@@ -138,7 +138,7 @@ describe('TierSchema', () => {
     it('accepts valid tier config', () => {
         const result = TierSchema.safeParse({
             scoreRange: [1, 3],
-            models: [{ provider: 'google', model: 'gemini-2.0-flash' }],
+            models: [{ provider: 'google', model: 'gemini-2.5-flash' }],
         });
         expect(result.success).toBe(true);
     });
@@ -164,7 +164,7 @@ describe('TierSchema', () => {
 
     it('rejects tier with missing scoreRange', () => {
         const result = TierSchema.safeParse({
-            models: [{ provider: 'google', model: 'gemini-2.0-flash' }],
+            models: [{ provider: 'google', model: 'gemini-2.5-flash' }],
         });
         expect(result.success).toBe(false);
     });
@@ -180,7 +180,7 @@ describe('TierSchema', () => {
         it('accepts scoreRange [1, 10] (full range)', () => {
             const result = TierSchema.safeParse({
                 scoreRange: [1, 10],
-                models: [{ provider: 'google', model: 'gemini-2.0-flash' }],
+                models: [{ provider: 'google', model: 'gemini-2.5-flash' }],
             });
             expect(result.success).toBe(true);
         });
@@ -188,7 +188,7 @@ describe('TierSchema', () => {
         it('accepts scoreRange [5, 5] (single score)', () => {
             const result = TierSchema.safeParse({
                 scoreRange: [5, 5],
-                models: [{ provider: 'google', model: 'gemini-2.0-flash' }],
+                models: [{ provider: 'google', model: 'gemini-2.5-flash' }],
             });
             expect(result.success).toBe(true);
         });
@@ -196,7 +196,7 @@ describe('TierSchema', () => {
         it('rejects scoreRange with min < 1', () => {
             const result = TierSchema.safeParse({
                 scoreRange: [0, 3],
-                models: [{ provider: 'google', model: 'gemini-2.0-flash' }],
+                models: [{ provider: 'google', model: 'gemini-2.5-flash' }],
             });
             expect(result.success).toBe(false);
         });
@@ -204,7 +204,7 @@ describe('TierSchema', () => {
         it('rejects scoreRange with max > 10', () => {
             const result = TierSchema.safeParse({
                 scoreRange: [1, 11],
-                models: [{ provider: 'google', model: 'gemini-2.0-flash' }],
+                models: [{ provider: 'google', model: 'gemini-2.5-flash' }],
             });
             expect(result.success).toBe(false);
         });
@@ -212,7 +212,7 @@ describe('TierSchema', () => {
         it('rejects scoreRange with non-tuple (single element)', () => {
             const result = TierSchema.safeParse({
                 scoreRange: [5],
-                models: [{ provider: 'google', model: 'gemini-2.0-flash' }],
+                models: [{ provider: 'google', model: 'gemini-2.5-flash' }],
             });
             expect(result.success).toBe(false);
         });
@@ -220,7 +220,7 @@ describe('TierSchema', () => {
         it('rejects scoreRange with non-tuple (three elements)', () => {
             const result = TierSchema.safeParse({
                 scoreRange: [1, 5, 10],
-                models: [{ provider: 'google', model: 'gemini-2.0-flash' }],
+                models: [{ provider: 'google', model: 'gemini-2.5-flash' }],
             });
             expect(result.success).toBe(false);
         });
@@ -232,12 +232,12 @@ describe('TierSchema', () => {
 // ────────────────────────────────────────────────────────────────
 describe('ModelEntrySchema', () => {
     it('accepts valid model entry', () => {
-        const result = ModelEntrySchema.safeParse({ provider: 'google', model: 'gemini-2.0-flash' });
+        const result = ModelEntrySchema.safeParse({ provider: 'google', model: 'gemini-2.5-flash' });
         expect(result.success).toBe(true);
     });
 
     it('rejects missing provider', () => {
-        const result = ModelEntrySchema.safeParse({ model: 'gemini-2.0-flash' });
+        const result = ModelEntrySchema.safeParse({ model: 'gemini-2.5-flash' });
         expect(result.success).toBe(false);
     });
 
@@ -247,7 +247,7 @@ describe('ModelEntrySchema', () => {
     });
 
     it('rejects non-string provider', () => {
-        const result = ModelEntrySchema.safeParse({ provider: 123, model: 'gemini-2.0-flash' });
+        const result = ModelEntrySchema.safeParse({ provider: 123, model: 'gemini-2.5-flash' });
         expect(result.success).toBe(false);
     });
 
@@ -297,7 +297,7 @@ describe('ClassifierConfigSchema', () => {
         expect(result.success).toBe(true);
         if (result.success) {
             expect(result.data.providers).toEqual([
-                { provider: 'google', model: 'gemini-2.0-flash' },
+                { provider: 'google', model: 'gemini-2.5-flash' },
             ]);
             expect(result.data.fallbackTier).toBe('economical');
             expect(result.data.timeoutMs).toBe(3000);

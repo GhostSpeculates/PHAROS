@@ -32,7 +32,6 @@ const PRICING_DEFAULTS: Record<string, ModelPricing> = {
     // Groq: free at low volume — routing only (classifier moved to Moonshot), free tier lasts longer
     // Google Gemini Flash: free via Gemini Developer API free tier (rate-limited, no per-token charge)
     // If self-hosting at high volume, override via config pricing section
-    'google/gemini-2.0-flash': { inputPerMillion: 0, outputPerMillion: 0 },
     'google/gemini-2.5-flash': { inputPerMillion: 0, outputPerMillion: 0 },
     'groq/llama-3.3-70b-versatile': { inputPerMillion: 0, outputPerMillion: 0 },
 

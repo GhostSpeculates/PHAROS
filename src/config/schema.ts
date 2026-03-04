@@ -59,7 +59,7 @@ export const ClassifierConfigSchema = z.object({
         if (data.provider && data.model) {
             providers = [{ provider: data.provider, model: data.model }];
         } else {
-            providers = [{ provider: 'google', model: 'gemini-2.0-flash' }];
+            providers = [{ provider: 'google', model: 'gemini-2.5-flash' }];
         }
     } else {
         providers = data.providers;
@@ -130,6 +130,15 @@ export const SpendingConfigSchema = z.object({
     monthlyLimit: z.number().positive().nullable().default(null),
 });
 
+// ─── Agent profile configuration ───
+export const AgentProfileSchema = z.object({
+    description: z.string().optional(),
+    scoreFloor: z.number().min(1).max(10).optional(),
+    scoreCeiling: z.number().min(1).max(10).optional(),
+    minTier: z.enum(['free', 'economical', 'premium', 'frontier']).optional(),
+    maxTier: z.enum(['free', 'economical', 'premium', 'frontier']).optional(),
+});
+
 // ─── Conversation tracking configuration ───
 export const ConversationConfigSchema = z.object({
     maxConversations: z.number().int().positive().default(500),
@@ -169,7 +178,7 @@ export const PharosConfigSchema = z.object({
             { message: 'Tier score ranges must not overlap' },
         )
         .default({
-            free: { scoreRange: [1, 3], models: [{ provider: 'google', model: 'gemini-2.0-flash' }] },
+            free: { scoreRange: [1, 3], models: [{ provider: 'google', model: 'gemini-2.5-flash' }] },
             economical: {
                 scoreRange: [4, 6],
                 models: [{ provider: 'deepseek', model: 'deepseek-chat' }],
@@ -184,6 +193,7 @@ export const PharosConfigSchema = z.object({
             },
         }),
     providers: z.record(z.string(), ProviderConfigSchema).default({}),
+    agents: z.record(z.string(), AgentProfileSchema).default({}),
     pricing: z.array(PricingEntrySchema).optional(),
     taskAffinity: TaskAffinitySchema.default({}),
     spending: SpendingConfigSchema.default({}),

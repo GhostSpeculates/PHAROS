@@ -18,6 +18,7 @@ import { estimateTokens, getContextWindow, isContextSizeError } from '../utils/c
 import { isTransientError, calculateBackoffMs, sleep } from '../utils/retry.js';
 import { sendAlert } from '../utils/alerts.js';
 import { ConversationTracker, applyTierFloor } from '../router/conversation-tracker.js';
+import { isMemoryFlush } from '../utils/flush-detector.js';
 
 /**
  * Register all API routes on the Fastify server.
@@ -415,8 +416,19 @@ ${recentRows}
         let conversationTierFloor: string | undefined;
 
         try {
-            // 2. Classify the query
-            classification = await classifier.classify(messages);
+            // 2. Detect memory flush patterns — bypass classifier entirely
+            if (isMemoryFlush(messages)) {
+                logger.info({ requestId }, 'Memory flush detected — classification bypassed');
+                classification = {
+                    score: 2,
+                    type: 'conversation' as const,
+                    classifierProvider: 'flush-detector',
+                    latencyMs: 0,
+                    isFallback: false,
+                };
+            } else {
+                classification = await classifier.classify(messages);
+            }
 
             // 3. Determine routing
             const directModel = router.resolveDirectModel(body.model);

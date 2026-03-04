@@ -52,7 +52,7 @@ export function applyAgentProfile(
     const currentTier = resolveTier(score, config);
     if (TIER_ORDER.indexOf(currentTier) < TIER_ORDER.indexOf(profile.minTier)) {
       // Bump score to the minimum of the target tier's scoreRange
-      const targetRange = config.tiers[profile.minTier]?.scoreRange;
+      const targetRange = config.tiers[profile.minTier as TierName]?.scoreRange;
       if (targetRange) {
         score = Math.max(score, targetRange[0]);
       }
@@ -64,7 +64,7 @@ export function applyAgentProfile(
     const currentTier = resolveTier(score, config);
     if (TIER_ORDER.indexOf(currentTier) > TIER_ORDER.indexOf(profile.maxTier)) {
       // Cap score to the maximum of the allowed tier's scoreRange
-      const targetRange = config.tiers[profile.maxTier]?.scoreRange;
+      const targetRange = config.tiers[profile.maxTier as TierName]?.scoreRange;
       if (targetRange) {
         score = Math.min(score, targetRange[1]);
       }

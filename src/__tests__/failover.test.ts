@@ -12,7 +12,7 @@ function makeConfig(overrides?: Partial<PharosConfig['tiers']>): PharosConfig {
             scoreRange: [1, 3],
             models: [
                 { provider: 'groq', model: 'llama-3.3-70b-versatile' },
-                { provider: 'google', model: 'gemini-2.0-flash' },
+                { provider: 'google', model: 'gemini-2.5-flash' },
             ],
         },
         economical: {
@@ -107,7 +107,7 @@ describe('findAvailableModel', () => {
         const result = findAvailableModel('free', config, registry, logger);
 
         expect(result.provider).toBe('google');
-        expect(result.model).toBe('gemini-2.0-flash');
+        expect(result.model).toBe('gemini-2.5-flash');
         expect(result.tier).toBe('free');
         // getCandidateModels pre-filters unavailable providers, so attempts = 1
         expect(result.attempts).toBe(1);
