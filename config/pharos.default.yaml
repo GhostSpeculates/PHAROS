@@ -309,6 +309,18 @@ conversation:
   maxConversations: 500
   conversationTtlMs: 1800000
 
+# Performance learning — adaptive routing based on observed success/failure/latency
+# Models that perform well for a task type get tried first (within tier boundaries)
+performanceLearning:
+  enabled: true
+  # Minimum samples before weight deviates significantly from 1.0
+  minConfidenceSamples: 10
+  # Decay factor applied to counts on each startup (0.85 = ~45% after 5 restarts)
+  decayFactor: 0.85
+  # Weight bounds (0.3 = strong demotion, 2.0 = strong promotion)
+  maxWeight: 2.0
+  minWeight: 0.3
+
 # Cost tracking
 tracking:
   enabled: true

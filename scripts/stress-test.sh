@@ -50,7 +50,7 @@ json_escape() {
 # Send a single request, write result line to file
 # Format: id|label|http_code|latency_ms|tier|model|provider|score|cost
 send_request() {
-    local id="$1" label="$2" query="$3" result_file="$4"
+    local id="$1" label="$2" query="$3" result_file="$4" model_name="${5:-pharos-auto}"
     local escaped
     escaped=$(json_escape "$query")
 
@@ -68,19 +68,20 @@ send_request() {
         -D "$hdr_file" \
         -o "$body_file" \
         "$BASE_URL/v1/chat/completions" \
-        -d "{\"model\":\"pharos-auto\",\"messages\":[{\"role\":\"user\",\"content\":\"$escaped\"}],\"max_tokens\":100}" 2>&1) || http_code="000"
+        -d "{\"model\":\"$model_name\",\"messages\":[{\"role\":\"user\",\"content\":\"$escaped\"}],\"max_tokens\":100}" 2>&1) || http_code="000"
 
     end_ms=$(get_ms)
     latency_ms=$((end_ms - start_ms))
 
-    local tier model provider score cost
+    local tier model provider score cost enhanced
     tier=$(grep -i 'x-pharos-tier:' "$hdr_file" 2>/dev/null | awk '{print $2}' | tr -d '\r' || echo "")
     model=$(grep -i 'x-pharos-model:' "$hdr_file" 2>/dev/null | awk '{print $2}' | tr -d '\r' || echo "")
     provider=$(grep -i 'x-pharos-provider:' "$hdr_file" 2>/dev/null | awk '{print $2}' | tr -d '\r' || echo "")
     score=$(grep -i 'x-pharos-score:' "$hdr_file" 2>/dev/null | awk '{print $2}' | tr -d '\r' || echo "")
     cost=$(grep -i 'x-pharos-cost:' "$hdr_file" 2>/dev/null | awk '{print $2}' | tr -d '\r' || echo "0")
+    enhanced=$(grep -i 'x-pharos-enhanced:' "$hdr_file" 2>/dev/null | awk '{print $2}' | tr -d '\r' || echo "")
 
-    echo "${id}|${label}|${http_code}|${latency_ms}|${tier}|${model}|${provider}|${score}|${cost}" > "$result_file"
+    echo "${id}|${label}|${http_code}|${latency_ms}|${tier}|${model}|${provider}|${score}|${cost}|${enhanced}" > "$result_file"
 
     rm -f "$hdr_file" "$body_file"
 }
@@ -214,6 +215,90 @@ for i in $(seq 0 $MIX_IDX); do
     rf="$RESULTS_DIR/mix_$i"
     [[ -f "$rf" ]] && print_result "$(cat "$rf")"
 done
+
+echo ""
+
+# ═══════════════════════════════════════════════════════════════
+#  PHASE 4: Agent Profile Routing
+# ═══════════════════════════════════════════════════════════════
+echo "--- Phase 4: Agent Profile Routing (noir→premium, default→classifier) ---"
+echo ""
+
+# noir agent — should be routed to premium+ (minTier: premium)
+rf="$RESULTS_DIR/agent_noir"
+send_request "A1" "noir-agent" "Hello, how are you?" "$rf" "pharos-auto:noir"
+print_result "$(cat "$rf")"
+
+# essence agent — classifier decides freely
+rf="$RESULTS_DIR/agent_essence"
+send_request "A2" "essence-agent" "Hello, how are you?" "$rf" "pharos-auto:essence"
+print_result "$(cat "$rf")"
+
+# No agent — default routing
+rf="$RESULTS_DIR/agent_default"
+send_request "A3" "no-agent" "Hello, how are you?" "$rf" "pharos-auto"
+print_result "$(cat "$rf")"
+
+echo ""
+
+# ═══════════════════════════════════════════════════════════════
+#  PHASE 5: Virtual Model Routing
+# ═══════════════════════════════════════════════════════════════
+echo "--- Phase 5: Virtual Model Routing (pharos-code, pharos-reasoning) ---"
+echo ""
+
+rf="$RESULTS_DIR/virtual_code"
+send_request "V1" "pharos-code" "Write a hello world function in Python" "$rf" "pharos-code"
+print_result "$(cat "$rf")"
+
+rf="$RESULTS_DIR/virtual_reason"
+send_request "V2" "pharos-reason" "If it takes 5 machines 5 minutes to make 5 widgets, how long would it take 100 machines to make 100 widgets?" "$rf" "pharos-reasoning"
+print_result "$(cat "$rf")"
+
+echo ""
+
+# ═══════════════════════════════════════════════════════════════
+#  PHASE 6: Prompt Enhancement Verification
+# ═══════════════════════════════════════════════════════════════
+echo "--- Phase 6: Prompt Enhancement (check X-Pharos-Enhanced header) ---"
+echo ""
+
+# Simple query should route to free tier and potentially get enhanced
+rf="$RESULTS_DIR/enhance_1"
+send_request "E1" "enh-simple" "What is the capital of France?" "$rf"
+LINE=$(cat "$rf")
+print_result "$LINE"
+ENH=$(echo "$LINE" | cut -d'|' -f10)
+TIER=$(echo "$LINE" | cut -d'|' -f5)
+if [[ "$ENH" == "true" ]]; then
+    echo "  ✓ Prompt enhancement activated (tier=$TIER)"
+elif [[ "$TIER" == "free" || "$TIER" == "economical" ]]; then
+    echo "  ○ Free/economical tier but enhancement not reported (may be disabled)"
+else
+    echo "  ○ Premium/frontier tier — enhancement not expected"
+fi
+
+echo ""
+
+# ═══════════════════════════════════════════════════════════════
+#  PHASE 7: Performance Learning Validation
+# ═══════════════════════════════════════════════════════════════
+echo "--- Phase 7: Performance Learning (send 3 queries, verify /v1/stats) ---"
+echo ""
+
+for i in 1 2 3; do
+    rf="$RESULTS_DIR/learn_$i"
+    send_request "L$i" "learning-$i" "Explain quicksort algorithm" "$rf"
+    print_result "$(cat "$rf")"
+done
+
+# Check stats endpoint for phase2 learning data
+STATS=$(curl -s -H "Authorization: Bearer $API_KEY" "$BASE_URL/v1/stats" 2>/dev/null)
+if echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d.get('phase2',{}); print(f\"  Learning: enabled={p.get('performanceLearning',{}).get('enabled','?')}, tracked={p.get('performanceLearning',{}).get('modelsTracked',0)}\"); print(f\"  Enhancement rate: {p.get('promptEnhancement',{}).get('activationRate',0)*100:.1f}%\"); print(f\"  Active agents: {p.get('agentProfiles',{}).get('activeAgents',0)}\")" 2>/dev/null; then
+    echo "  ✓ Phase 2 metrics visible in /v1/stats"
+else
+    echo "  ✗ Could not read Phase 2 metrics from /v1/stats"
+fi
 
 echo ""
 

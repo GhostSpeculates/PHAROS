@@ -48,4 +48,41 @@ export interface CostSummary {
         averageLatencyMs: number;
         rateLimits: number;
     };
+    phase2?: {
+        promptEnhancement: {
+            activationRate: number;
+            totalActivated: number;
+            totalRequests: number;
+            byTaskType: Record<string, number>;
+        };
+        performanceLearning: {
+            enabled: boolean;
+            modelsTracked: number;
+            topPerformers: Array<{
+                provider: string;
+                model: string;
+                taskType: string;
+                weight: number;
+                successRate: number;
+            }>;
+            worstPerformers: Array<{
+                provider: string;
+                model: string;
+                taskType: string;
+                weight: number;
+                successRate: number;
+            }>;
+        };
+        agentProfiles: {
+            activeAgents: number;
+            adjustmentRate: number;
+            totalAdjusted: number;
+            totalRequests: number;
+        };
+        conversationFloor: {
+            applicationRate: number;
+            totalApplied: number;
+            totalRequests: number;
+        };
+    };
 }
