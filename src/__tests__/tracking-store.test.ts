@@ -391,6 +391,93 @@ describe('TrackingStore', () => {
         });
     });
 
+    describe('agent tracking fields', () => {
+        it('stores agentId when provided', () => {
+            store.record(makeRecord({ id: 'req-agent-1', agentId: 'noir-prime' }));
+            const recent = store.getRecent(1);
+            expect(recent).toHaveLength(1);
+        });
+
+        it('stores conversationId when provided', () => {
+            store.record(makeRecord({ id: 'req-conv-1', conversationId: 'conv-abc123' }));
+            const recent = store.getRecent(1);
+            expect(recent).toHaveLength(1);
+        });
+
+        it('stores retryCount when provided', () => {
+            store.record(makeRecord({ id: 'req-retry-1', retryCount: 3 }));
+            const recent = store.getRecent(1);
+            expect(recent).toHaveLength(1);
+        });
+
+        it('stores providerLatencyMs when provided', () => {
+            store.record(makeRecord({ id: 'req-latency-1', providerLatencyMs: 450 }));
+            const recent = store.getRecent(1);
+            expect(recent).toHaveLength(1);
+        });
+
+        it('defaults retryCount to 0 when not provided', () => {
+            store.record(makeRecord({ id: 'req-no-retry' }));
+            const recent = store.getRecent(1);
+            expect(recent).toHaveLength(1);
+        });
+
+        it('handles null agent fields gracefully', () => {
+            store.record(makeRecord({
+                id: 'req-null-agent',
+                agentId: undefined,
+                conversationId: undefined,
+                providerLatencyMs: undefined,
+            }));
+            const recent = store.getRecent(1);
+            expect(recent).toHaveLength(1);
+        });
+    });
+
+    describe('getAgentSummary', () => {
+        it('returns empty array when no agent records exist', () => {
+            store.record(makeRecord({ id: 'req-no-agent' }));
+            const summary = store.getAgentSummary();
+            expect(summary).toEqual([]);
+        });
+
+        it('groups by agentId with count and cost', () => {
+            store.record(makeRecord({ id: 'req-a1', agentId: 'noir-prime', estimatedCost: 0.01 }));
+            store.record(makeRecord({ id: 'req-a2', agentId: 'noir-prime', estimatedCost: 0.02 }));
+            store.record(makeRecord({ id: 'req-b1', agentId: 'worker', estimatedCost: 0.001 }));
+
+            const summary = store.getAgentSummary();
+            expect(summary).toHaveLength(2);
+
+            const noir = summary.find(s => s.agentId === 'noir-prime');
+            expect(noir).toBeDefined();
+            expect(noir!.count).toBe(2);
+            expect(noir!.cost).toBeCloseTo(0.03);
+
+            const worker = summary.find(s => s.agentId === 'worker');
+            expect(worker).toBeDefined();
+            expect(worker!.count).toBe(1);
+        });
+
+        it('orders by cost descending', () => {
+            store.record(makeRecord({ id: 'req-cheap', agentId: 'worker', estimatedCost: 0.001 }));
+            store.record(makeRecord({ id: 'req-expensive', agentId: 'noir-prime', estimatedCost: 0.10 }));
+
+            const summary = store.getAgentSummary();
+            expect(summary[0].agentId).toBe('noir-prime');
+            expect(summary[1].agentId).toBe('worker');
+        });
+
+        it('excludes records without agentId', () => {
+            store.record(makeRecord({ id: 'req-no-agent-1' }));
+            store.record(makeRecord({ id: 'req-with-agent', agentId: 'test-agent', estimatedCost: 0.05 }));
+
+            const summary = store.getAgentSummary();
+            expect(summary).toHaveLength(1);
+            expect(summary[0].agentId).toBe('test-agent');
+        });
+    });
+
     describe('migration idempotency', () => {
         it('creating a second store on the same database does not crash', () => {
             // The first store already created tables + ran migrations in beforeEach.

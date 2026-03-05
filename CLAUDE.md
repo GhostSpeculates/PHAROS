@@ -52,9 +52,9 @@ Backward-compatible with legacy single `provider`/`model` format.
 - **Premium** (score 7-8): Claude Sonnet, GPT-4o
 - **Frontier** (score 9-10): Claude Opus, Claude Sonnet (fallback), GPT-4o
 
-### Providers (10 active)
+### Providers (11 active — 10 cloud + 1 local)
 
-Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot, Together AI, Fireworks AI
+Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot, Together AI, Fireworks AI, Ollama (local)
 
 All use the OpenAI-compatible adapter (`src/providers/openai-compat.ts`) except Anthropic (`anthropic.ts`) and Google (`google.ts`) which have native adapters.
 
@@ -103,13 +103,32 @@ npm run format     # Prettier
 
 ## Deployment
 
-- **VPS**: root@<vps-redacted>, port 3777, systemd service `pharos`
-- **Deploy**: `npm run build && bash scripts/deploy-vps.sh`
-- Deploy script packages `.env` + `config/` + `dist/` + `package*.json` → tarball → SCP → VPS
-- Systemd: `Restart=always`, 5s delay, 5 burst/60s limit
-- Journald: 500M max, 50M per file (`/etc/systemd/journald.conf.d/pharos.conf`)
-- Auth: Bearer token required (`PHAROS_API_KEY` env var)
-- Binding: localhost-only (127.0.0.1), UFW firewall (SSH only)
+### Mac Mini (PRIMARY — Production)
+- **Host**: ghostfx@192.168.1.148 (Mac Mini M4 16GB)
+- **Path**: `~/pharos/` (config, data, dist, .env)
+- **Service**: launchd `com.pharos.gateway` (PID managed by launchd)
+- **Port**: 3777 (localhost)
+- **Plist**: `~/Library/LaunchAgents/com.pharos.gateway.plist`
+- **Auth**: Bearer token required (`PHAROS_API_KEY` env var in `~/pharos/.env`)
+- **Logs**: `~/.openclaw/logs/pharos-stdout.log`, `pharos-stderr.log`
+- **DB**: `~/pharos/data/pharos.db` (active), `pharos-vps-archive.db` (historical from VPS)
+- **Deploy**: `npm run build` locally → `scp dist/ ghostfx@192.168.1.148:~/pharos/dist/`
+- **Restart**: `launchctl kickstart -k gui/501/com.pharos.gateway`
+- **Health**: `curl -s http://localhost:3777/health`
+- **Stats**: `curl -s -H "Authorization: Bearer $PHAROS_API_KEY" http://localhost:3777/v1/stats`
+
+### VPS — DECOMMISSIONED
+- Historical VPS data preserved at `~/pharos/data/pharos-vps-archive.db` on Mac Mini
+- Legacy deploy scripts in `scripts/` are VPS-only — do not use
+
+### Providers (11 active on Mac Mini)
+Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot, Together AI, Fireworks AI, Ollama (local)
+
+### Ollama (Local — $0 routing)
+- **Models**: qwen2.5:14b (8GB), kimi-k2.5:cloud
+- **Endpoint**: http://localhost:11434
+- Pharos routes score 1-3 queries to Ollama for free local inference
+- All 8 OpenClaw workers use `ollama/qwen2.5:14b` as primary model
 
 ## Code Conventions
 
@@ -193,7 +212,7 @@ src/
 - Pricing table configurable via YAML (hardcoded defaults as fallback)
 - TrackingStore.close() is idempotent (safe for multiple shutdown paths)
 - Stream errors caught and SSE properly closed on failure
-- Systemd: Restart=always, memory limits (2G max), graceful shutdown (SIGTERM, 30s timeout)
+- macOS launchd: KeepAlive=true, auto-restart on crash (was systemd on VPS)
 - Conversation tracking: bounded LRU cache (500 max, 30min TTL) prevents unbounded memory growth
 
 ## Development Notes
@@ -268,13 +287,18 @@ src/
 - **Phase 3 (Dashboard)**: NOT STARTED — web UI, model registry browser, routing visualization
 - **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker Hub, docs site, community registry
 
-## Production Stats (Feb 25, 2026)
+## Production Stats
 
-- 201 requests processed, **73.4% savings** vs Sonnet baseline ($1.93 actual vs $7.24 baseline)
-- 10 providers configured, 6/6 passing self-test (Together + Fireworks pending API keys)
-- 8 agents routing through Pharos (workers direct to Google)
-- Stress tested: 35/35 requests under burst load, 0 failures, 0 misclassifications
+### Current (Mac Mini — March 4, 2026)
+- **11 providers** configured, all healthy (verified via `/health`)
+- **15 agents** routing through Pharos (7 core via `pharos/pharos-auto:X`, 8 workers via `ollama/qwen2.5:14b` with Pharos fallback)
+- Noir (orchestrator) routes via `pharos-auto:noir-prime` with `minTier: premium` agent profile guard (ensures premium+ for reliable tool_use delegation)
+- Local Ollama handles score 1-3 queries at $0
+- Gemini 2.5 Flash across all fallback chains
+- max_tokens capped at 1536 across all models (cost protection)
 - Discord alerts + ntfy.sh phone notifications live
-- Classifier metrics: cache hits, rate limit tracking, provider distribution
-- ⚠️ Groq hitting 100K token/day free tier limit — failover handles it, 0% error rate
-- Memory: ~44MB, all providers healthy
+
+### Historical (VPS — Feb 25, 2026)
+- 201 requests processed, **73.4% savings** vs Sonnet baseline ($1.93 actual vs $7.24 baseline)
+- Stress tested: 35/35 requests under burst load, 0 failures
+- Historical data preserved in `~/pharos/data/pharos-vps-archive.db`

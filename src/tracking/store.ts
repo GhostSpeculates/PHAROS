@@ -77,10 +77,23 @@ export class TrackingStore {
         if (!columnNames.has('debug_output')) {
             this.db.exec('ALTER TABLE requests ADD COLUMN debug_output TEXT');
         }
+        if (!columnNames.has('agent_id')) {
+            this.db.exec('ALTER TABLE requests ADD COLUMN agent_id TEXT');
+        }
+        if (!columnNames.has('conversation_id')) {
+            this.db.exec('ALTER TABLE requests ADD COLUMN conversation_id TEXT');
+        }
+        if (!columnNames.has('retry_count')) {
+            this.db.exec('ALTER TABLE requests ADD COLUMN retry_count INTEGER DEFAULT 0');
+        }
+        if (!columnNames.has('provider_latency_ms')) {
+            this.db.exec('ALTER TABLE requests ADD COLUMN provider_latency_ms INTEGER');
+        }
 
         // Index on classifier_provider — must run after migration adds the column
         this.db.exec('CREATE INDEX IF NOT EXISTS idx_requests_classifier_provider ON requests(classifier_provider)');
         this.db.exec('CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status)');
+        this.db.exec('CREATE INDEX IF NOT EXISTS idx_requests_agent_id ON requests(agent_id)');
 
         this.insertStmt = this.db.prepare(`
       INSERT INTO requests (
@@ -89,14 +102,16 @@ export class TrackingStore {
         classifier_provider,
         tokens_in, tokens_out, estimated_cost, baseline_cost, savings,
         total_latency_ms, stream, is_direct_route, user_message_preview,
-        status, error_message, debug_input, debug_output
+        status, error_message, debug_input, debug_output,
+        agent_id, conversation_id, retry_count, provider_latency_ms
       ) VALUES (
         @id, @timestamp, @tier, @provider, @model,
         @classificationScore, @classificationType, @classificationLatencyMs,
         @classifierProvider,
         @tokensIn, @tokensOut, @estimatedCost, @baselineCost, @savings,
         @totalLatencyMs, @stream, @isDirectRoute, @userMessagePreview,
-        @status, @errorMessage, @debugInput, @debugOutput
+        @status, @errorMessage, @debugInput, @debugOutput,
+        @agentId, @conversationId, @retryCount, @providerLatencyMs
       )
     `);
 
@@ -141,6 +156,10 @@ export class TrackingStore {
                 errorMessage: record.errorMessage ?? null,
                 debugInput: record.debugInput ?? null,
                 debugOutput: record.debugOutput ?? null,
+                agentId: record.agentId ?? null,
+                conversationId: record.conversationId ?? null,
+                retryCount: record.retryCount ?? 0,
+                providerLatencyMs: record.providerLatencyMs ?? null,
             });
         } catch (error) {
             this.logger.error({ error }, 'Failed to record request');
@@ -272,6 +291,27 @@ export class TrackingStore {
             .prepare('SELECT COALESCE(SUM(estimated_cost), 0) as total FROM requests WHERE timestamp >= ?')
             .get(`${monthStart}T00:00:00.000Z`) as { total: number };
         return row.total;
+    }
+
+    /**
+     * Get per-agent cost summary.
+     */
+    getAgentSummary(): Array<{ agentId: string; count: number; cost: number }> {
+        const rows = this.db
+            .prepare(
+                `SELECT agent_id, COUNT(*) as count, COALESCE(SUM(estimated_cost), 0) as cost
+                FROM requests
+                WHERE agent_id IS NOT NULL
+                GROUP BY agent_id
+                ORDER BY cost DESC`,
+            )
+            .all() as Array<{ agent_id: string; count: number; cost: number }>;
+
+        return rows.map(r => ({
+            agentId: r.agent_id,
+            count: r.count,
+            cost: r.cost,
+        }));
     }
 
     /**

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { findAvailableModel, getCandidateModels } from '../router/failover.js';
+import { findAvailableModel, getCandidateModels, sortByRegistry } from '../router/failover.js';
 import type { PharosConfig, TierName } from '../config/schema.js';
 import type { ProviderRegistry } from '../providers/index.js';
 import type { Logger } from '../utils/logger.js';
@@ -229,5 +229,95 @@ describe('getCandidateModels', () => {
         expect(tiers).toContain('frontier');
         // Should also include lower tiers
         expect(tiers.some((t) => t !== 'frontier')).toBe(true);
+    });
+});
+
+describe('sortByRegistry', () => {
+    it('returns empty array for empty input', () => {
+        expect(sortByRegistry([], 'free')).toEqual([]);
+    });
+
+    it('returns single candidate unchanged', () => {
+        const candidates = [{ provider: 'groq', model: 'llama-3.3-70b-versatile', tier: 'free' as TierName }];
+        expect(sortByRegistry(candidates, 'free')).toEqual(candidates);
+    });
+
+    it('prefers fast models over medium in free tier', () => {
+        const candidates = [
+            { provider: 'deepseek', model: 'deepseek-chat', tier: 'free' as TierName },       // medium
+            { provider: 'groq', model: 'llama-3.3-70b-versatile', tier: 'free' as TierName },  // fast
+        ];
+        const sorted = sortByRegistry(candidates, 'free');
+        expect(sorted[0].provider).toBe('groq');
+    });
+
+    it('prefers fast models over medium in economical tier', () => {
+        const candidates = [
+            { provider: 'deepseek', model: 'deepseek-chat', tier: 'economical' as TierName },       // medium
+            { provider: 'groq', model: 'llama-3.3-70b-versatile', tier: 'economical' as TierName },  // fast
+        ];
+        const sorted = sortByRegistry(candidates, 'economical');
+        expect(sorted[0].provider).toBe('groq');
+    });
+
+    it('does NOT reorder premium tier candidates by speed', () => {
+        const candidates = [
+            { provider: 'anthropic', model: 'claude-sonnet-4-20250514', tier: 'premium' as TierName }, // medium
+            { provider: 'openai', model: 'gpt-4o', tier: 'premium' as TierName },                      // medium
+        ];
+        const sorted = sortByRegistry(candidates, 'premium');
+        // Should maintain original order for premium
+        expect(sorted[0].provider).toBe('anthropic');
+    });
+
+    it('does NOT reorder frontier tier candidates', () => {
+        const candidates = [
+            { provider: 'anthropic', model: 'claude-opus-4-20250514', tier: 'frontier' as TierName }, // slow
+            { provider: 'openai', model: 'gpt-4o', tier: 'frontier' as TierName },                    // medium
+        ];
+        const sorted = sortByRegistry(candidates, 'frontier');
+        expect(sorted[0].provider).toBe('anthropic');
+    });
+
+    it('prefers cheaper providers when speed is the same', () => {
+        // Both medium speed, but deepseek is much cheaper than moonshot
+        const candidates = [
+            { provider: 'moonshot', model: 'kimi-latest', tier: 'economical' as TierName },     // medium, $3.0
+            { provider: 'deepseek', model: 'deepseek-chat', tier: 'economical' as TierName },   // medium, $0.42
+        ];
+        const sorted = sortByRegistry(candidates, 'economical');
+        expect(sorted[0].provider).toBe('deepseek');
+    });
+
+    it('preserves tier boundaries (never moves cross-tier)', () => {
+        const candidates = [
+            { provider: 'deepseek', model: 'deepseek-chat', tier: 'economical' as TierName },         // medium
+            { provider: 'groq', model: 'llama-3.3-70b-versatile', tier: 'free' as TierName },          // fast
+        ];
+        const sorted = sortByRegistry(candidates, 'economical');
+        // economical should still come first (tier order preserved)
+        expect(sorted[0].tier).toBe('economical');
+    });
+
+    it('handles unknown models gracefully (defaults to medium speed)', () => {
+        const candidates = [
+            { provider: 'unknown', model: 'mystery-model', tier: 'free' as TierName },
+            { provider: 'groq', model: 'llama-3.3-70b-versatile', tier: 'free' as TierName },  // fast
+        ];
+        const sorted = sortByRegistry(candidates, 'free');
+        // groq is fast (rank 0), unknown defaults to medium (rank 1)
+        expect(sorted[0].provider).toBe('groq');
+    });
+
+    it('sorts multiple fast models by cost', () => {
+        const candidates = [
+            { provider: 'together', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', tier: 'free' as TierName },  // fast, $1.76
+            { provider: 'groq', model: 'llama-3.3-70b-versatile', tier: 'free' as TierName },                        // fast, $0
+            { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct', tier: 'free' as TierName }, // fast, $1.80
+        ];
+        const sorted = sortByRegistry(candidates, 'free');
+        expect(sorted[0].provider).toBe('groq');       // free, cheapest
+        expect(sorted[1].provider).toBe('together');    // $1.76
+        expect(sorted[2].provider).toBe('fireworks');   // $1.80
     });
 });

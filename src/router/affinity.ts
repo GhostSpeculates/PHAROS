@@ -17,7 +17,7 @@ import type { ModelCandidate } from './failover.js';
 export const DEFAULT_TASK_AFFINITY: Record<string, string[]> = {
     code: ['deepseek', 'together', 'fireworks', 'anthropic'],
     math: ['together', 'openai', 'anthropic', 'deepseek'],
-    reasoning: ['anthropic', 'openai', 'deepseek'],
+    reasoning: ['anthropic', 'deepseek', 'openai'],
     creative: ['anthropic', 'google', 'openai'],
     conversation: ['groq', 'together', 'fireworks', 'google'],
     analysis: ['deepseek', 'together', 'anthropic', 'openai'],

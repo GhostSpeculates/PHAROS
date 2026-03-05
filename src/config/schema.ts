@@ -139,6 +139,13 @@ export const AgentProfileSchema = z.object({
     maxTier: z.enum(['free', 'economical', 'premium', 'frontier']).optional(),
 });
 
+// ─── Prompt enhancement configuration ───
+export const PromptEnhancementSchema = z.object({
+    enabled: z.boolean().default(true),
+    excludeTiers: z.array(z.enum(['free', 'economical', 'premium', 'frontier'])).default(['premium', 'frontier']),
+    hints: z.record(z.string(), z.string()).default({}),
+});
+
 // ─── Conversation tracking configuration ───
 export const ConversationConfigSchema = z.object({
     maxConversations: z.number().int().positive().default(500),
@@ -197,6 +204,7 @@ export const PharosConfigSchema = z.object({
     pricing: z.array(PricingEntrySchema).optional(),
     taskAffinity: TaskAffinitySchema.default({}),
     spending: SpendingConfigSchema.default({}),
+    promptEnhancement: PromptEnhancementSchema.default({}),
     conversation: ConversationConfigSchema.default({}),
     tracking: TrackingConfigSchema.default({}),
     logging: LoggingConfigSchema.default({}),

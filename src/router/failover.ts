@@ -4,6 +4,7 @@ import type { Logger } from '../utils/logger.js';
 import { getTierFailoverOrder } from './tier-resolver.js';
 import { sendAlert } from '../utils/alerts.js';
 import { sortByAffinity } from './affinity.js';
+import { getSpeedRank, getModelCost } from '../registry/index.js';
 
 export interface FailoverResult {
     provider: string;
@@ -35,11 +36,12 @@ export function findAvailableModel(
     taskType?: string,
     affinityMap?: Record<string, string[]>,
 ): FailoverResult {
-    // Build candidates with affinity sorting
+    // Build candidates with affinity sorting, then registry-aware sorting
     const candidates = getCandidateModels(primaryTier, config, registry);
-    const sorted = (taskType && affinityMap)
+    const affinitySorted = (taskType && affinityMap)
         ? sortByAffinity(candidates, taskType, affinityMap)
         : candidates;
+    const sorted = sortByRegistry(affinitySorted, primaryTier);
 
     // Try each candidate in order
     if (sorted.length > 0) {
@@ -123,4 +125,61 @@ export function getCandidateModels(
     }
 
     return candidates;
+}
+
+/** Tiers where speed preference applies (cheap tiers benefit from fast models) */
+const SPEED_PREFERENCE_TIERS: Set<string> = new Set(['free', 'economical']);
+
+/**
+ * Registry-aware secondary sort within each tier group.
+ *
+ * After affinity sorting, this applies:
+ * 1. Speed preference: for free/economical tiers, prefer fast > medium > slow
+ * 2. Price preference: for same-speed candidates, prefer cheaper providers
+ *
+ * This is a stable sort — candidates with the same speed+cost keep their
+ * affinity-determined order.
+ */
+export function sortByRegistry(
+    candidates: ModelCandidate[],
+    primaryTier: TierName,
+): ModelCandidate[] {
+    if (candidates.length <= 1) return candidates;
+
+    // Group by tier to preserve tier ordering
+    const tierGroups = new Map<string, ModelCandidate[]>();
+    const tierOrder: string[] = [];
+
+    for (const c of candidates) {
+        if (!tierGroups.has(c.tier)) {
+            tierGroups.set(c.tier, []);
+            tierOrder.push(c.tier);
+        }
+        tierGroups.get(c.tier)!.push(c);
+    }
+
+    const result: ModelCandidate[] = [];
+    for (const tier of tierOrder) {
+        const group = tierGroups.get(tier)!;
+
+        // Only apply speed/price sorting for cheap tiers
+        if (SPEED_PREFERENCE_TIERS.has(tier)) {
+            // Stable sort: speed first, then cost
+            const sorted = [...group].sort((a, b) => {
+                const speedA = getSpeedRank(a.provider, a.model);
+                const speedB = getSpeedRank(b.provider, b.model);
+                if (speedA !== speedB) return speedA - speedB;
+
+                // Same speed — prefer cheaper
+                const costA = getModelCost(a.provider, a.model) ?? Infinity;
+                const costB = getModelCost(b.provider, b.model) ?? Infinity;
+                return costA - costB;
+            });
+            result.push(...sorted);
+        } else {
+            result.push(...group);
+        }
+    }
+
+    return result;
 }

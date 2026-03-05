@@ -25,6 +25,10 @@ export interface RequestRecord {
     errorMessage?: string;
     debugInput?: string;
     debugOutput?: string;
+    agentId?: string;
+    conversationId?: string;
+    retryCount?: number;
+    providerLatencyMs?: number;
 }
 
 export interface CostSummary {
