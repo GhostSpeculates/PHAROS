@@ -146,6 +146,15 @@ export const PromptEnhancementSchema = z.object({
     hints: z.record(z.string(), z.string()).default({}),
 });
 
+// ─── Performance learning configuration ───
+export const PerformanceLearningSchema = z.object({
+    enabled: z.boolean().default(true),
+    minConfidenceSamples: z.number().int().positive().default(10),
+    decayFactor: z.number().min(0).max(1).default(0.85),
+    maxWeight: z.number().positive().default(2.0),
+    minWeight: z.number().positive().default(0.3),
+});
+
 // ─── Conversation tracking configuration ───
 export const ConversationConfigSchema = z.object({
     maxConversations: z.number().int().positive().default(500),
@@ -206,6 +215,7 @@ export const PharosConfigSchema = z.object({
     spending: SpendingConfigSchema.default({}),
     promptEnhancement: PromptEnhancementSchema.default({}),
     conversation: ConversationConfigSchema.default({}),
+    performanceLearning: PerformanceLearningSchema.default({}),
     tracking: TrackingConfigSchema.default({}),
     logging: LoggingConfigSchema.default({}),
 });

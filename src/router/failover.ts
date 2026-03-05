@@ -1,6 +1,7 @@
 import type { PharosConfig, TierName, ModelEntry } from '../config/schema.js';
 import type { ProviderRegistry } from '../providers/index.js';
 import type { Logger } from '../utils/logger.js';
+import type { PerformanceLearningStore } from '../learning/performance-store.js';
 import { getTierFailoverOrder } from './tier-resolver.js';
 import { sendAlert } from '../utils/alerts.js';
 import { sortByAffinity } from './affinity.js';
@@ -35,13 +36,15 @@ export function findAvailableModel(
     logger: Logger,
     taskType?: string,
     affinityMap?: Record<string, string[]>,
+    learningStore?: PerformanceLearningStore | null,
 ): FailoverResult {
-    // Build candidates with affinity sorting, then registry-aware sorting
+    // Build candidates with affinity sorting, then registry-aware sorting, then performance sorting
     const candidates = getCandidateModels(primaryTier, config, registry);
     const affinitySorted = (taskType && affinityMap)
         ? sortByAffinity(candidates, taskType, affinityMap)
         : candidates;
-    const sorted = sortByRegistry(affinitySorted, primaryTier);
+    const registrySorted = sortByRegistry(affinitySorted, primaryTier);
+    const sorted = sortByPerformance(registrySorted, taskType, learningStore);
 
     // Try each candidate in order
     if (sorted.length > 0) {
@@ -182,4 +185,65 @@ export function sortByRegistry(
     }
 
     return result;
+}
+
+/**
+ * Performance-weighted reordering within each tier group.
+ *
+ * This is the final sort step — applied after affinity and registry sorting.
+ * Models with higher learned weights are moved toward the front within their tier.
+ * Unknown models keep weight 1.0 and stay in their current position (stable sort).
+ *
+ * Tier boundaries are never crossed.
+ */
+export function sortByPerformance(
+    candidates: ModelCandidate[],
+    taskType?: string,
+    learningStore?: PerformanceLearningStore | null,
+): ModelCandidate[] {
+    if (!learningStore || !taskType || candidates.length <= 1) {
+        return candidates;
+    }
+
+    try {
+        // Fetch all weights for this task type in one query
+        const weights = learningStore.getWeightsForTaskType(taskType);
+        if (weights.length === 0) return candidates;
+
+        // Build lookup map: "provider/model" → weight
+        const weightMap = new Map<string, number>();
+        for (const w of weights) {
+            weightMap.set(`${w.provider}/${w.model}`, w.weight);
+        }
+
+        // Group by tier to preserve tier ordering
+        const tierGroups = new Map<string, ModelCandidate[]>();
+        const tierOrder: string[] = [];
+
+        for (const c of candidates) {
+            if (!tierGroups.has(c.tier)) {
+                tierGroups.set(c.tier, []);
+                tierOrder.push(c.tier);
+            }
+            tierGroups.get(c.tier)!.push(c);
+        }
+
+        const result: ModelCandidate[] = [];
+        for (const tier of tierOrder) {
+            const group = tierGroups.get(tier)!;
+
+            // Stable sort by weight descending (higher weight = tried first)
+            const sorted = [...group].sort((a, b) => {
+                const wA = weightMap.get(`${a.provider}/${a.model}`) ?? 1.0;
+                const wB = weightMap.get(`${b.provider}/${b.model}`) ?? 1.0;
+                return wB - wA;
+            });
+            result.push(...sorted);
+        }
+
+        return result;
+    } catch {
+        // On any error, return candidates unchanged
+        return candidates;
+    }
 }

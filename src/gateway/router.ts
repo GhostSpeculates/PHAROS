@@ -21,6 +21,8 @@ import { ConversationTracker, applyTierFloor } from '../router/conversation-trac
 import { isMemoryFlush } from '../utils/flush-detector.js';
 import { enhancePrompt } from '../router/prompt-enhancer.js';
 import { applyAgentProfile } from '../router/agent-profile.js';
+import type { PerformanceLearningStore } from '../learning/performance-store.js';
+import type { Phase2Metrics } from '../tracking/phase2-metrics.js';
 
 /**
  * Register all API routes on the Fastify server.
@@ -37,6 +39,8 @@ export function registerRoutes(
     tracker: TrackingStore | null,
     logger: Logger,
     conversationTracker?: ConversationTracker,
+    learningStore?: PerformanceLearningStore | null,
+    phase2Metrics?: Phase2Metrics,
 ): void {
     const authMiddleware = createAuthMiddleware(config);
     const agentRateLimiter = createAgentRateLimiter(config.server.agentRateLimitPerMinute, logger);
@@ -195,6 +199,35 @@ ${Object.entries(status).map(([name, info]: [string, any]) => {
 </div>
 </div>
 </div>
+
+${(() => {
+    if (!phase2Metrics) return '';
+    const topPerformers = learningStore?.getTopPerformers(3) ?? [];
+    const p2 = phase2Metrics.getSummary(
+        !!learningStore,
+        learningStore?.getTrackedCount() ?? 0,
+        topPerformers.map(w => ({ provider: w.provider, model: w.model, taskType: w.taskType, weight: Math.round(w.weight * 100) / 100, successRate: Math.round(w.successRate * 100) / 100 })),
+        [],
+    );
+    const enhRate = (p2.promptEnhancement.activationRate * 100).toFixed(1);
+    const agentRate = (p2.agentProfiles.adjustmentRate * 100).toFixed(1);
+    const floorRate = (p2.conversationFloor.applicationRate * 100).toFixed(1);
+    const topRows = topPerformers.length > 0
+        ? topPerformers.map(w =>
+            `<tr><td>${w.provider}</td><td style="font-size:.75rem">${w.model}</td><td>${w.taskType}</td><td>${(w.successRate * 100).toFixed(0)}%</td><td>${w.weight.toFixed(2)}</td></tr>`
+        ).join('')
+        : '<tr><td colspan="5" style="color:#525252">No data yet</td></tr>';
+    return `<div class="card">
+<h2>Phase 2 Features</h2>
+<div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:1rem">
+<div><div class="stat-value">${enhRate}%</div><div class="stat-label">Prompt Enhancement</div></div>
+<div><div class="stat-value">${p2.agentProfiles.activeAgents}</div><div class="stat-label">Active Agents</div></div>
+<div><div class="stat-value">${agentRate}%</div><div class="stat-label">Agent Adjustments</div></div>
+<div><div class="stat-value">${floorRate}%</div><div class="stat-label">Tier Floor Applied</div></div>
+</div>
+<table><tr><th>Provider</th><th>Model</th><th>Task</th><th>Success</th><th>Weight</th></tr>${topRows}</table>
+</div>`;
+})()}
 
 <div class="card">
 <h2>Recent Requests <span class="refresh" id="countdown">refreshing in 30s</span></h2>
@@ -448,6 +481,11 @@ ${recentRows}
                 classification = { ...classification, score: agentAdjustment.adjustedScore };
             }
 
+            // Record agent profile metrics
+            if (agentId) {
+                phase2Metrics?.recordAgentAdjustment(agentId, agentAdjustment.adjustedScore !== agentAdjustment.rawScore);
+            }
+
             // 3. Determine routing
             const directModel = router.resolveDirectModel(body.model);
             const taskTypeOverride = router.resolveTaskTypeOverride(body.model ?? '');
@@ -500,6 +538,8 @@ ${recentRows}
                             );
                         }
                     }
+                    // Record conversation floor metrics
+                    phase2Metrics?.recordConversationFloor(!!conversationTierFloor);
                 }
             }
 
@@ -541,10 +581,16 @@ ${recentRows}
             if (enhancement.enhanced) {
                 chatRequest.messages = enhancement.messages;
                 logger.debug(
-                    { requestId, taskType: classification.type, tier: routing.tier, hint: enhancement.hint },
+                    { requestId, feature: 'promptEnhancement', taskType: classification.type, tier: routing.tier, hint: enhancement.hint },
                     'Prompt enhanced for cheap model',
                 );
             }
+
+            // Track whether prompt enhancement was applied for this request
+            const promptEnhanced = enhancement.enhanced;
+
+            // Record Phase 2 metrics
+            phase2Metrics?.recordPromptEnhancement(promptEnhanced, classification.type);
 
             // Build candidate list: direct routes get a single candidate, auto routes get full retry chain
             const candidates = directModel
@@ -638,6 +684,9 @@ ${recentRows}
                                     if (conversationTierFloor) {
                                         reply.raw.setHeader('X-Pharos-Conversation-Tier', conversationTierFloor);
                                     }
+                                    if (promptEnhanced) {
+                                        reply.raw.setHeader('X-Pharos-Enhanced', 'true');
+                                    }
                                     initSSEHeaders(reply);
                                     headersSent = true;
                                 }
@@ -680,6 +729,9 @@ ${recentRows}
                                 undefined, { debugInput },
                                 { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount, providerLatencyMs: Math.max(0, providerLatency) },
                             );
+
+                            // Record performance learning outcome (success)
+                            learningStore?.recordOutcome(candidate.provider, candidate.model, classification.type, true, Math.max(0, providerLatency));
 
                             // Record conversation tier for future tier floor calculations
                             if (conversationId && conversationTracker && config.conversation?.enabled) {
@@ -748,6 +800,10 @@ ${recentRows}
 
                             // Non-transient or retry also failed — failover to next candidate
                             retryCount++;
+
+                            // Record performance learning outcome (failure)
+                            learningStore?.recordOutcome(candidate.provider, candidate.model, classification.type, false, 0);
+
                             if (isContextSizeError(errMsg)) {
                                 logger.warn(
                                     { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount },
@@ -816,6 +872,10 @@ ${recentRows}
 
                         // Non-transient or retry also failed — failover to next candidate
                         retryCount++;
+
+                        // Record performance learning outcome (failure)
+                        learningStore?.recordOutcome(candidate.provider, candidate.model, classification.type, false, 0);
+
                         if (isContextSizeError(errMsg)) {
                             logger.warn(
                                 { requestId, provider: candidate.provider, model: candidate.model, attempt: retryCount },
@@ -852,6 +912,10 @@ ${recentRows}
                 { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount },
             );
 
+            // Record performance learning outcome (success)
+            const providerLatencyMs = Date.now() - requestStartTime - (classification.latencyMs ?? 0);
+            learningStore?.recordOutcome(usedProvider, usedModel, classification.type, true, Math.max(0, providerLatencyMs));
+
             // Record conversation tier for future tier floor calculations
             if (conversationId && conversationTracker && config.conversation?.enabled) {
                 conversationTracker.recordTier(conversationId, usedTier as TierName);
@@ -883,6 +947,9 @@ ${recentRows}
             }
             if (conversationTierFloor) {
                 reply.header('X-Pharos-Conversation-Tier', conversationTierFloor);
+            }
+            if (promptEnhanced) {
+                reply.header('X-Pharos-Enhanced', 'true');
             }
 
             return buildChatCompletionResponse({
@@ -940,6 +1007,32 @@ ${recentRows}
         }
         const summary = tracker.getSummary();
         summary.classifier = classifier.getMetrics();
+
+        // Phase 2 metrics
+        if (phase2Metrics) {
+            const topPerformers = learningStore?.getTopPerformers(5)?.map(w => ({
+                provider: w.provider,
+                model: w.model,
+                taskType: w.taskType,
+                weight: Math.round(w.weight * 100) / 100,
+                successRate: Math.round(w.successRate * 100) / 100,
+            })) ?? [];
+            const worstPerformers = learningStore?.getWorstPerformers(5)?.map(w => ({
+                provider: w.provider,
+                model: w.model,
+                taskType: w.taskType,
+                weight: Math.round(w.weight * 100) / 100,
+                successRate: Math.round(w.successRate * 100) / 100,
+            })) ?? [];
+
+            summary.phase2 = phase2Metrics.getSummary(
+                !!learningStore,
+                learningStore?.getTrackedCount() ?? 0,
+                topPerformers,
+                worstPerformers,
+            );
+        }
+
         return summary;
     });
 

@@ -3,9 +3,10 @@ import type { ClassificationResult } from '../classifier/types.js';
 import type { TaskType, TASK_TYPES } from '../classifier/types.js';
 import { TASK_TYPES as VALID_TASK_TYPES } from '../classifier/types.js';
 import type { ProviderRegistry } from '../providers/index.js';
+import type { PerformanceLearningStore } from '../learning/performance-store.js';
 import type { Logger } from '../utils/logger.js';
 import { resolveTier } from './tier-resolver.js';
-import { findAvailableModel, getCandidateModels, type FailoverResult, type ModelCandidate } from './failover.js';
+import { findAvailableModel, getCandidateModels, sortByPerformance, type FailoverResult, type ModelCandidate } from './failover.js';
 import { sortByAffinity, DEFAULT_TASK_AFFINITY } from './affinity.js';
 
 export interface RoutingDecision {
@@ -34,11 +35,18 @@ export class ModelRouter {
     private registry: ProviderRegistry;
     private logger: Logger;
     private affinityMap: Record<string, string[]>;
+    private learningStore: PerformanceLearningStore | null;
 
-    constructor(config: PharosConfig, registry: ProviderRegistry, logger: Logger) {
+    constructor(
+        config: PharosConfig,
+        registry: ProviderRegistry,
+        logger: Logger,
+        learningStore?: PerformanceLearningStore | null,
+    ) {
         this.config = config;
         this.registry = registry;
         this.logger = logger;
+        this.learningStore = learningStore ?? null;
 
         // Merge config-provided affinity with defaults (config wins)
         this.affinityMap = { ...DEFAULT_TASK_AFFINITY, ...config.taskAffinity };
@@ -62,7 +70,7 @@ export class ModelRouter {
 
         const result = findAvailableModel(
             tier, this.config, this.registry, this.logger,
-            classification.type, this.affinityMap,
+            classification.type, this.affinityMap, this.learningStore,
         );
 
         return {
@@ -122,7 +130,8 @@ export class ModelRouter {
     getCandidates(classification: ClassificationResult): ModelCandidate[] {
         const tier = resolveTier(classification.score, this.config);
         const candidates = getCandidateModels(tier, this.config, this.registry);
-        return sortByAffinity(candidates, classification.type, this.affinityMap);
+        const affinitySorted = sortByAffinity(candidates, classification.type, this.affinityMap);
+        return sortByPerformance(affinitySorted, classification.type, this.learningStore);
     }
 
     /**

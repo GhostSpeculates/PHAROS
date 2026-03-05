@@ -13,6 +13,8 @@ import { initPricing } from './tracking/cost-calculator.js';
 import { initAlerts, sendAlert } from './utils/alerts.js';
 import { providerSelfTest } from './utils/self-test.js';
 import { ConversationTracker } from './router/conversation-tracker.js';
+import { PerformanceLearningStore } from './learning/index.js';
+import { Phase2Metrics } from './tracking/phase2-metrics.js';
 
 /**
  * Create and configure the Pharos server.
@@ -45,9 +47,6 @@ export async function createServer(config: PharosConfig): Promise<{
     // ─── Initialize Classifier ───
     const classifier = new QueryClassifier(config, logger);
 
-    // ─── Initialize Router ───
-    const router = new ModelRouter(config, registry, logger);
-
     // ─── Initialize Conversation Tracker ───
     const conversationTracker = config.conversation?.enabled
         ? new ConversationTracker({
@@ -65,6 +64,23 @@ export async function createServer(config: PharosConfig): Promise<{
         tracker = new TrackingStore(config.tracking.dbPath, logger, config.tracking.retentionDays);
         logger.info(`Cost tracking: enabled (${config.tracking.dbPath})`);
     }
+
+    // ─── Initialize Performance Learning ───
+    let learningStore: PerformanceLearningStore | null = null;
+    if (config.performanceLearning?.enabled && tracker) {
+        const Database = (await import('better-sqlite3')).default;
+        const learningDb = new Database(config.tracking.dbPath);
+        learningDb.pragma('journal_mode = WAL');
+        learningStore = new PerformanceLearningStore(learningDb, logger, config.performanceLearning);
+        learningStore.applyDecay();
+        logger.info(`Performance learning: enabled (${learningStore.getTrackedCount()} models tracked)`);
+    }
+
+    // ─── Initialize Phase 2 Metrics ───
+    const phase2Metrics = new Phase2Metrics();
+
+    // ─── Initialize Router ───
+    const router = new ModelRouter(config, registry, logger, learningStore);
 
     // ─── Create Fastify Server ───
     const app = Fastify({
@@ -92,7 +108,7 @@ export async function createServer(config: PharosConfig): Promise<{
     app.setErrorHandler(createErrorHandler(logger));
 
     // Register routes
-    registerRoutes(app, config, classifier, router, registry, tracker, logger, conversationTracker);
+    registerRoutes(app, config, classifier, router, registry, tracker, logger, conversationTracker, learningStore, phase2Metrics);
 
     // ─── Server lifecycle ───
     return {
