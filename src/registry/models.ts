@@ -112,6 +112,15 @@ export const MODEL_REGISTRY: ModelRegistryEntry[] = [
         pricing: { inputPerMillion: 0.14, outputPerMillion: 0.28 },
         speed: 'medium',
     },
+    {
+        id: 'deepseek-reasoner',
+        provider: 'deepseek',
+        displayName: 'DeepSeek R1',
+        contextWindow: 131_072,
+        capabilities: ['code', 'math', 'reasoning'],
+        pricing: { inputPerMillion: 0.55, outputPerMillion: 2.19 },
+        speed: 'slow',
+    },
 
     // ─── Groq ───
     {

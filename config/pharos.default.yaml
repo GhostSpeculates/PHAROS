@@ -81,8 +81,10 @@ tiers:
         model: accounts/fireworks/models/deepseek-v3
       - provider: openai
         model: gpt-4o
-      # - provider: mistral
-      #   model: mistral-large-latest
+      - provider: mistral
+        model: mistral-large-latest
+      - provider: xai
+        model: grok-3-mini-fast
 
   premium:
     scoreRange: [7, 8]
@@ -91,6 +93,10 @@ tiers:
         model: claude-sonnet-4-20250514
       - provider: openai
         model: gpt-4o
+      - provider: google
+        model: gemini-2.5-pro
+      - provider: deepseek
+        model: deepseek-reasoner
 
   frontier:
     scoreRange: [9, 10]
@@ -101,6 +107,8 @@ tiers:
         model: claude-sonnet-4-20250514
       - provider: openai
         model: gpt-4o
+      - provider: openai
+        model: o3
 
 # Provider configurations — API keys loaded from env vars
 providers:
@@ -211,6 +219,10 @@ pricing:
     model: grok-3-mini-fast
     inputCostPerMillion: 0.30
     outputCostPerMillion: 0.50
+  - provider: deepseek
+    model: deepseek-reasoner
+    inputCostPerMillion: 0.55
+    outputCostPerMillion: 2.19
   # ─── Together AI ───
   - provider: together
     model: meta-llama/Llama-3.3-70B-Instruct-Turbo
@@ -241,11 +253,48 @@ pricing:
 taskAffinity:
   code: [deepseek, together, fireworks, anthropic]
   math: [together, openai, anthropic, deepseek]
-  reasoning: [anthropic, openai, deepseek]
+  reasoning: [anthropic, deepseek, openai]
   creative: [anthropic, google, openai]
   conversation: [groq, together, fireworks, google]
   analysis: [deepseek, together, anthropic, openai]
   planning: [anthropic, openai, deepseek]
+
+# Agent profiles — per-agent score clamping and tier guards
+# Available fields per agent:
+#   description: string   — hint passed to classifier for better initial scoring
+#   scoreFloor: 1-10      — minimum classification score
+#   scoreCeiling: 1-10    — maximum classification score
+#   minTier: free|economical|premium|frontier — never route below this tier
+#   maxTier: free|economical|premium|frontier — never route above this tier
+#
+# Agents are identified from the model field: "pharos-auto:agent-name" → agentId = "agent-name"
+# Edit this section to tune routing per agent. Changes take effect on next request (no restart needed if using pharos.yaml override).
+agents:
+  # ─── Orchestrator — needs premium+ for reliable tool_use delegation ───
+  noir:
+    description: "Primary orchestrator agent — delegates tasks to sub-agents via tool calls"
+    minTier: premium
+  # ─── Core agents — classifier decides freely ───
+  essence:
+    description: "Core personality and conversational agent"
+  nexus:
+    description: "Connection and integration agent"
+  edge:
+    description: "Fast-response edge processing agent"
+  sentinel:
+    description: "Monitoring and security agent"
+  lens:
+    description: "Analysis and observation agent"
+  vault:
+    description: "Data storage and retrieval agent"
+
+# Prompt enhancement — makes cheap models smarter with task-type hints
+# Only activates for free/economical tiers (premium/frontier don't need it)
+promptEnhancement:
+  enabled: true
+  excludeTiers: [premium, frontier]
+  # Override default hints per task type (leave empty to use built-in defaults)
+  hints: {}
 
 # Spending limits — set to null (or omit) to disable
 # Alerts fire at 80% and 100% of each limit

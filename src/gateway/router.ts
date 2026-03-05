@@ -19,6 +19,8 @@ import { isTransientError, calculateBackoffMs, sleep } from '../utils/retry.js';
 import { sendAlert } from '../utils/alerts.js';
 import { ConversationTracker, applyTierFloor } from '../router/conversation-tracker.js';
 import { isMemoryFlush } from '../utils/flush-detector.js';
+import { enhancePrompt } from '../router/prompt-enhancer.js';
+import { applyAgentProfile } from '../router/agent-profile.js';
 
 /**
  * Register all API routes on the Fastify server.
@@ -430,6 +432,22 @@ ${recentRows}
                 classification = await classifier.classify(messages);
             }
 
+            // 2a. Apply agent profile — score clamping + tier capping
+            const agentAdjustment = applyAgentProfile(classification.score, agentId ?? undefined, config);
+            if (agentAdjustment.adjustedScore !== classification.score) {
+                logger.info(
+                    {
+                        requestId,
+                        agentId,
+                        rawScore: agentAdjustment.rawScore,
+                        adjustedScore: agentAdjustment.adjustedScore,
+                        maxTier: agentAdjustment.maxTier,
+                    },
+                    'Agent profile applied — score adjusted',
+                );
+                classification = { ...classification, score: agentAdjustment.adjustedScore };
+            }
+
             // 3. Determine routing
             const directModel = router.resolveDirectModel(body.model);
             const taskTypeOverride = router.resolveTaskTypeOverride(body.model ?? '');
@@ -513,6 +531,21 @@ ${recentRows}
                 ...(body.thinking !== undefined && { thinking: body.thinking }),
             };
 
+            // 4a. Enhance prompt for cheap models (free/economical)
+            const enhancement = enhancePrompt(
+                chatRequest.messages,
+                classification.type,
+                routing.tier as TierName,
+                config,
+            );
+            if (enhancement.enhanced) {
+                chatRequest.messages = enhancement.messages;
+                logger.debug(
+                    { requestId, taskType: classification.type, tier: routing.tier, hint: enhancement.hint },
+                    'Prompt enhanced for cheap model',
+                );
+            }
+
             // Build candidate list: direct routes get a single candidate, auto routes get full retry chain
             const candidates = directModel
                 ? [{ provider: routing.provider, model: routing.model, tier: routing.tier }]
@@ -587,6 +620,7 @@ ${recentRows}
                                         tracker, config, requestId, finalRouting, classification, finalUsage,
                                         Date.now() - requestStartTime, true, userMessagePreview,
                                         undefined, { debugInput },
+                                        { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount },
                                     );
                                     return;
                                 }
@@ -644,6 +678,7 @@ ${recentRows}
                                 tracker, config, requestId, finalRouting, classification, finalUsage,
                                 Date.now() - requestStartTime, true, userMessagePreview,
                                 undefined, { debugInput },
+                                { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount, providerLatencyMs: Math.max(0, providerLatency) },
                             );
 
                             // Record conversation tier for future tier floor calculations
@@ -814,6 +849,7 @@ ${recentRows}
                 tracker, config, requestId, finalRouting, classification, response.usage,
                 Date.now() - requestStartTime, false, userMessagePreview,
                 undefined, { debugInput, debugOutput },
+                { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount },
             );
 
             // Record conversation tier for future tier floor calculations
@@ -868,6 +904,7 @@ ${recentRows}
                     Date.now() - requestStartTime, body.stream ?? false, userMessagePreview,
                     { status: 'error', errorMessage: errMsg },
                     { debugInput },
+                    { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount: 0 },
                 );
             }
 
@@ -930,6 +967,7 @@ function trackRequest(
     userMessagePreview: string,
     errorInfo?: { status: 'error'; errorMessage: string },
     debugInfo?: { debugInput?: string; debugOutput?: string },
+    extraFields?: { agentId?: string; conversationId?: string; retryCount?: number; providerLatencyMs?: number },
 ): void {
     if (!tracker) return;
 
@@ -962,5 +1000,11 @@ function trackRequest(
         userMessagePreview,
         ...(errorInfo && { status: errorInfo.status, errorMessage: errorInfo.errorMessage }),
         ...(debugInfo && { debugInput: debugInfo.debugInput, debugOutput: debugInfo.debugOutput }),
+        ...(extraFields && {
+            agentId: extraFields.agentId,
+            conversationId: extraFields.conversationId,
+            retryCount: extraFields.retryCount,
+            providerLatencyMs: extraFields.providerLatencyMs,
+        }),
     });
 }
