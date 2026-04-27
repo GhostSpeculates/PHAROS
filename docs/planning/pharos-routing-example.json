@@ -1,0 +1,54 @@
+{
+  "_comment": "Pharos routing config — controls max_tokens per task type for cost efficiency. All inference routes through Pharos smart router (pharos-auto model). Checked by noir-cron-wrapper.sh at runtime.",
+  "_updated": "2026-03-23",
+  "_note": "Ollama decommissioned Mar 23. All tasks now route through Pharos which picks the cheapest capable model (Haiku 4.5 for simple, Sonnet for medium).",
+
+  "enabled": true,
+
+  "tasks": [
+    {
+      "id": "lead-enrichment",
+      "description": "Lead enrichment text analysis — parse website copy, extract contact signals, score leads",
+      "job_name_patterns": ["nex-enrich", "lead-enrich", "lead-score", "lead-analysis"],
+      "max_tokens": 1024,
+      "rationale": "Structured extraction from known HTML/text. Pharos routes to cheapest model."
+    },
+    {
+      "id": "email-draft",
+      "description": "Cold email and outreach draft generation from a lead profile or brief",
+      "job_name_patterns": ["email-draft", "cold-email", "outreach-draft", "mockup-outreach"],
+      "max_tokens": 512,
+      "rationale": "Template-driven generation. Nex Labs voice is fixed. Low token cap saves cost."
+    },
+    {
+      "id": "news-summary",
+      "description": "News article summarization and formatting for breaking-news and daily digest",
+      "job_name_patterns": ["news-summar", "news-format", "eod-news", "breaking-news-format"],
+      "max_tokens": 768,
+      "rationale": "Summarization of structured text. High volume, low complexity."
+    },
+    {
+      "id": "commit-message",
+      "description": "Git commit message generation from diff or change description",
+      "job_name_patterns": ["commit-msg", "git-commit", "auto-commit"],
+      "max_tokens": 256,
+      "rationale": "Short output, deterministic format. Minimal tokens needed."
+    },
+    {
+      "id": "text-formatting",
+      "description": "Simple text formatting, parsing, and transformation tasks",
+      "job_name_patterns": ["text-format", "log-parse", "csv-format", "json-format", "data-clean"],
+      "max_tokens": 512,
+      "rationale": "Mechanical transformation. No judgment required."
+    },
+    {
+      "id": "log-analysis",
+      "description": "Log file summarization and anomaly flagging from system or app logs",
+      "job_name_patterns": ["log-summar", "log-analyz", "log-review", "error-digest"],
+      "max_tokens": 1024,
+      "rationale": "Pattern recognition in structured text. Medium complexity."
+    }
+  ],
+
+  "default_max_tokens": 1024
+}
