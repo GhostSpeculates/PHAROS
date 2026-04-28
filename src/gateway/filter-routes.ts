@@ -50,7 +50,7 @@ interface FilterResponse {
 
 export function registerFilterRoutes(opts: {
     fastify: FastifyInstance;
-    classifier?: { classify: (text: string) => Promise<{ score: number; type: string; needsTool?: boolean }> };
+    classifier?: { classify: (messages: Array<{ role: string; content: unknown }>) => Promise<{ score: number; type: string }> };
     logger: Logger;
 }): void {
     const { fastify, classifier, logger } = opts;
@@ -64,11 +64,17 @@ export function registerFilterRoutes(opts: {
             return { error: 'empty prompt — provide either `prompt` or `messages`' };
         }
 
-        // Try real classifier first; fall back to heuristic if classifier missing.
-        let classification: { score: number; type: string; needsTool?: boolean };
+        // Heuristic owns needsTool detection in both classifier-present and -absent paths.
+        const needsTool = detectNeedsTool(text);
+
+        // Try real classifier first; fall back to full heuristic if it errors.
+        let classification: { score: number; type: string; needsTool: boolean };
         if (classifier) {
             try {
-                classification = await classifier.classify(text);
+                const messages = body.messages
+                    ?? [{ role: 'user', content: body.prompt ?? '' }];
+                const result = await classifier.classify(messages);
+                classification = { score: result.score, type: result.type, needsTool };
             } catch (e) {
                 logger.warn({ err: e }, '[filter] classifier failed, falling back to heuristic');
                 classification = heuristic(text);
@@ -84,14 +90,17 @@ export function registerFilterRoutes(opts: {
     logger.info('[filter] route registered: POST /v1/filter (advisor mode, no inference)');
 }
 
+function detectNeedsTool(text: string): boolean {
+    const lower = text.toLowerCase();
+    return /\b(read|write|edit|search|fetch|browse|navigate|click|run|execute|deploy|commit)\b/.test(lower)
+        || /https?:\/\//.test(lower);
+}
+
 function heuristic(text: string): { score: number; type: string; needsTool: boolean } {
     const lower = text.toLowerCase();
     const len = text.length;
 
-    // Tool detection — anything that looks like a request to do filesystem,
-    // network, or browser work needs T2 not T3.
-    const needsTool = /\b(read|write|edit|search|fetch|browse|navigate|click|run|execute|deploy|commit)\b/.test(lower)
-                      || /https?:\/\//.test(lower);
+    const needsTool = detectNeedsTool(text);
 
     // Task classification heuristics
     let type = 'conversation';
@@ -113,11 +122,11 @@ function heuristic(text: string): { score: number; type: string; needsTool: bool
 }
 
 function strategyFromClassification(
-    cls: { score: number; type: string; needsTool?: boolean },
+    cls: { score: number; type: string; needsTool: boolean },
     hints: { vertical?: string; channel?: string; agent?: string } = {},
 ): FilterResponse {
     const score = cls.score;
-    const needsTool = !!cls.needsTool;
+    const needsTool = cls.needsTool;
 
     // Tier mapping (matches pharos.yaml tier policies)
     let tier: FilterResponse['recommended_tier'];

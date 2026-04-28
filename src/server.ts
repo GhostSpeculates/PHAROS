@@ -6,7 +6,10 @@ import { QueryClassifier } from './classifier/index.js';
 import { ModelRouter } from './router/index.js';
 import { ProviderRegistry } from './providers/index.js';
 import { TrackingStore } from './tracking/store.js';
+import { WalletStore } from './tracking/wallet-store.js';
 import { registerRoutes } from './gateway/router.js';
+import { registerWalletRoutes } from './gateway/wallet-routes.js';
+import { registerFilterRoutes } from './gateway/filter-routes.js';
 import { createErrorHandler } from './gateway/middleware/error-handler.js';
 import { createLogger, type Logger } from './utils/logger.js';
 import { initPricing } from './tracking/cost-calculator.js';
@@ -65,6 +68,16 @@ export async function createServer(config: PharosConfig): Promise<{
         logger.info(`Cost tracking: enabled (${config.tracking.dbPath})`);
     }
 
+    // ─── Initialize Wallet (Wave 5 / Phase 8.2) ───
+    // Reuses the same DB file as tracking — `users` + `wallet_ledger` tables
+    // coexist with `requests` table. Additive; existing schema untouched.
+    // R1-refined schema (INTEGER cents, idempotent stripe events, multi-tenant placeholders).
+    let wallet: WalletStore | null = null;
+    if (config.tracking.enabled) {
+        wallet = new WalletStore(config.tracking.dbPath, logger);
+        logger.info(`Wallet: enabled (Phase 8.2 — schema initialized at ${config.tracking.dbPath})`);
+    }
+
     // ─── Initialize Performance Learning ───
     let learningStore: PerformanceLearningStore | null = null;
     if (config.performanceLearning?.enabled && tracker) {
@@ -109,6 +122,20 @@ export async function createServer(config: PharosConfig): Promise<{
 
     // Register routes
     registerRoutes(app, config, classifier, router, registry, tracker, logger, conversationTracker, learningStore, phase2Metrics);
+
+    // Wave 5 — wallet routes (only if wallet store initialized)
+    if (wallet) {
+        registerWalletRoutes({ fastify: app, wallet, logger });
+    }
+
+    // Wave 4 — filter advisor routes (uses existing classifier; safe even if classifier is null)
+    registerFilterRoutes({
+        fastify: app,
+        classifier: classifier
+            ? { classify: async (messages) => classifier.classify(messages) }
+            : undefined,
+        logger,
+    });
 
     // ─── Server lifecycle ───
     return {
