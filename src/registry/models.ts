@@ -194,6 +194,72 @@ export const MODEL_REGISTRY: ModelRegistryEntry[] = [
         pricing: { inputPerMillion: 0.60, outputPerMillion: 0.60 },
         speed: 'fast',
     },
+    // ─── Together: high-reasoning open-weight (added 2026-05-01) ───
+    {
+        id: 'deepseek-ai/DeepSeek-R1',
+        provider: 'together',
+        displayName: 'DeepSeek R1 (Together) — o1-class reasoning',
+        contextWindow: 128_000,
+        capabilities: ['code', 'math', 'reasoning'],
+        pricing: { inputPerMillion: 3.00, outputPerMillion: 7.00 },
+        speed: 'slow',
+    },
+    {
+        id: 'Qwen/QwQ-32B-Preview',
+        provider: 'together',
+        displayName: 'Qwen QwQ-32B Preview (Together) — reasoning',
+        contextWindow: 32_768,
+        capabilities: ['code', 'math', 'reasoning'],
+        pricing: { inputPerMillion: 1.20, outputPerMillion: 1.20 },
+        speed: 'medium',
+    },
+    {
+        id: 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo',
+        provider: 'together',
+        displayName: 'Llama 3.1 405B Turbo (Together) — frontier-class',
+        contextWindow: 130_815,
+        capabilities: ['code', 'math', 'reasoning', 'conversation', 'multilingual', 'creative'],
+        pricing: { inputPerMillion: 3.50, outputPerMillion: 3.50 },
+        speed: 'slow',
+    },
+
+    // ─── OpenRouter — Llama 4 + Gemma 3 + Anthropic resilience (added 2026-05-01) ───
+    {
+        id: 'google/gemma-3-27b-it',
+        provider: 'openrouter',
+        displayName: 'Gemma 3 27B Instruct (via OpenRouter)',
+        contextWindow: 128_000,
+        capabilities: ['code', 'math', 'reasoning', 'conversation', 'multilingual'],
+        pricing: { inputPerMillion: 0.10, outputPerMillion: 0.30 },
+        speed: 'fast',
+    },
+    {
+        id: 'meta-llama/llama-4-scout',
+        provider: 'openrouter',
+        displayName: 'Llama 4 Scout (via OpenRouter)',
+        contextWindow: 1_000_000,
+        capabilities: ['code', 'math', 'reasoning', 'conversation', 'multilingual', 'creative'],
+        pricing: { inputPerMillion: 0.15, outputPerMillion: 0.30 },
+        speed: 'fast',
+    },
+    {
+        id: 'meta-llama/llama-4-maverick',
+        provider: 'openrouter',
+        displayName: 'Llama 4 Maverick (via OpenRouter) — Meta flagship MoE',
+        contextWindow: 1_000_000,
+        capabilities: ['code', 'math', 'reasoning', 'conversation', 'multilingual', 'creative'],
+        pricing: { inputPerMillion: 0.30, outputPerMillion: 0.50 },
+        speed: 'medium',
+    },
+    {
+        id: 'anthropic/claude-opus-4',
+        provider: 'openrouter',
+        displayName: 'Claude Opus 4 (via OpenRouter, resilience backup)',
+        contextWindow: 200_000,
+        capabilities: ['code', 'math', 'reasoning', 'conversation', 'multilingual', 'creative'],
+        pricing: { inputPerMillion: 30.00, outputPerMillion: 150.00 },
+        speed: 'slow',
+    },
 
     // ─── Fireworks AI ───
     {

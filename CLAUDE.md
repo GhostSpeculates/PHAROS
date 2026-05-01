@@ -289,9 +289,11 @@ src/
 
 ## Production Stats
 
-### Current (Mac Mini — March 4, 2026)
-- **11 providers** configured, all healthy (verified via `/health`)
-- **15 agents** routing through Pharos (7 core via `pharos/pharos-auto:X`, 8 workers via `ollama/qwen2.5:14b` with Pharos fallback)
+### Current (Mac Mini — verified May 1, 2026)
+- **12 providers** configured, all healthy (verified via `/health`) — added OpenRouter 2026-04-30
+- **17,728 lifetime requests** processed (verified via `/v1/stats`); **87.01% cost savings** vs Sonnet baseline
+- **Active agents**: registered in `agents:` block of `pharos.yaml` — marketing-agent, openclaw, noir-prime, sentinel, quant, lens, prospector + `_default` floor (economical)
+- **Note**: prior "15 agents in production" claim was aspirational; actual ongoing traffic comes primarily from NOIR scripts and the marketing agent. Once OpenClaw is reinstalled, expect that fleet to ramp up.
 - Noir (orchestrator) routes via `pharos-auto:noir-prime` with `minTier: premium` agent profile guard (ensures premium+ for reliable tool_use delegation)
 - Local Ollama handles score 1-3 queries at $0
 - Gemini 2.5 Flash across all fallback chains

@@ -1,0 +1,286 @@
+# Pharos Visual Generation Providers — Phase 14 scaffold
+#
+# All providers `enabled: false` until Ghost loads keys via /keys (Visual tab).
+# Real HTTP wiring deferred to Phase 14.2. Wallet deduction deferred to Phase 8.
+#
+# Naming: provider/model — same convention as Pharos text router.
+#   image: openai/gpt-image-1, kling/kling-1.5, bfl/flux-1.1-pro, ...
+#   video: kling/kling-1.6, runway/gen-3, google/veo-2, ...
+#
+# cost_per_image / cost_per_second values are best-effort sticker prices from
+# each provider's pricing page (Apr 2026). Filter (Phase 13) uses these to
+# pick cheapest-capable when no explicit model is requested.
+
+image_providers:
+
+  openai:
+    label: OpenAI Image (gpt-image-1, DALL-E)
+    enabled: false
+    keychain_svc: pharos-openai
+    env_var: OPENAI_API_KEY
+    api_endpoint: https://api.openai.com/v1/images/generations
+    auth_style: bearer
+    models:
+      - id: gpt-image-1
+        sizes: [1024x1024, 1024x1536, 1536x1024]
+        qualities: [low, medium, high]
+        cost_per_image: 0.04   # standard 1024x1024 medium
+      - id: dalle-3
+        sizes: [1024x1024, 1024x1792, 1792x1024]
+        qualities: [standard, hd]
+        cost_per_image: 0.08   # 1024x1024 hd
+
+  bfl:
+    label: Black Forest Labs (Flux)
+    enabled: false
+    keychain_svc: pharos-bfl
+    env_var: BFL_API_KEY
+    api_endpoint: https://api.bfl.ai/v1/flux-pro-1.1
+    auth_style: x-key
+    models:
+      - id: flux-1.1-pro
+        sizes: [1024x1024, 1024x1536, 1536x1024, 2048x2048]
+        cost_per_image: 0.04
+      - id: flux-pro
+        sizes: [1024x1024]
+        cost_per_image: 0.05
+      - id: flux-dev
+        sizes: [1024x1024]
+        cost_per_image: 0.025
+
+  kling:
+    label: Kling AI (Image)
+    enabled: false
+    keychain_svc: pharos-kling
+    env_var: KLING_API_KEY
+    api_endpoint: https://api.klingai.com/v1/images/generations
+    auth_style: bearer
+    models:
+      - id: kling-1.5
+        sizes: [1024x1024, 1024x1792, 1792x1024]
+        cost_per_image: 0.02
+      - id: kling-1.6
+        sizes: [1024x1024, 2048x2048]
+        cost_per_image: 0.03
+
+  nano-banana:
+    label: Nano Banana (Google Gemini Image)
+    enabled: false
+    keychain_svc: pharos-nano-banana
+    env_var: NANO_BANANA_API_KEY
+    api_endpoint: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent
+    auth_style: google-key
+    models:
+      - id: v1
+        sizes: [1024x1024]
+        cost_per_image: 0.039  # ~$0.039 per image per Google pricing
+
+  midjourney:
+    label: Midjourney (via Discord/3rd-party gateway)
+    enabled: false
+    keychain_svc: pharos-midjourney
+    env_var: MIDJOURNEY_API_KEY
+    api_endpoint: https://api.userapi.ai/midjourney/v2/imagine
+    auth_style: bearer
+    notes: "MJ has no first-party API — gateway providers (UserAPI, GoAPI, ImagineAPI) wrap Discord."
+    models:
+      - id: v6.1
+        sizes: [1024x1024, 1024x1792, 1792x1024]
+        cost_per_image: 0.06
+      - id: v7
+        sizes: [1024x1024, 2048x2048]
+        cost_per_image: 0.08
+
+  dalle:
+    label: OpenAI DALL-E (legacy alias)
+    enabled: false
+    keychain_svc: pharos-openai
+    env_var: OPENAI_API_KEY
+    api_endpoint: https://api.openai.com/v1/images/generations
+    auth_style: bearer
+    notes: "Alias for openai provider; resolves to dalle-3 model."
+    models:
+      - id: dalle-3
+        sizes: [1024x1024, 1024x1792, 1792x1024]
+        qualities: [standard, hd]
+        cost_per_image: 0.08
+      - id: dalle-2
+        sizes: [256x256, 512x512, 1024x1024]
+        cost_per_image: 0.02
+
+  stability:
+    label: Stability AI (SDXL, SD 3.5)
+    enabled: false
+    keychain_svc: pharos-stability
+    env_var: STABILITY_API_KEY
+    api_endpoint: https://api.stability.ai/v2beta/stable-image/generate/sd3
+    auth_style: bearer
+    models:
+      - id: sdxl
+        sizes: [1024x1024]
+        cost_per_image: 0.018
+      - id: sd-3.5-large
+        sizes: [1024x1024, 1152x896, 896x1152]
+        cost_per_image: 0.065
+
+  ideogram:
+    label: Ideogram (typography-strong)
+    enabled: false
+    keychain_svc: pharos-ideogram
+    env_var: IDEOGRAM_API_KEY
+    api_endpoint: https://api.ideogram.ai/generate
+    auth_style: x-key
+    models:
+      - id: v3
+        sizes: [1024x1024, 1280x720, 720x1280]
+        cost_per_image: 0.05
+
+video_providers:
+
+  kling:
+    label: Kling AI (Video)
+    enabled: false
+    keychain_svc: pharos-kling
+    env_var: KLING_API_KEY
+    api_endpoint: https://api.klingai.com/v1/videos/generations
+    auth_style: bearer
+    async: true
+    models:
+      - id: kling-1.6
+        durations: [5, 10]
+        resolutions: [720p, 1080p]
+        cost_per_second: 0.10
+        avg_generation_seconds: 120
+      - id: kling-2.0
+        durations: [5, 10]
+        resolutions: [720p, 1080p, 4k]
+        cost_per_second: 0.18
+        avg_generation_seconds: 180
+
+  runway:
+    label: Runway (Gen-3, Gen-4)
+    enabled: false
+    keychain_svc: pharos-runway
+    env_var: RUNWAY_API_KEY
+    api_endpoint: https://api.dev.runwayml.com/v1/image_to_video
+    auth_style: bearer
+    async: true
+    models:
+      - id: gen-3
+        durations: [5, 10]
+        resolutions: [720p, 1080p]
+        cost_per_second: 0.05
+        avg_generation_seconds: 90
+      - id: gen-4
+        durations: [5, 10]
+        resolutions: [720p, 1080p]
+        cost_per_second: 0.12
+        avg_generation_seconds: 120
+
+  pika:
+    label: Pika Labs
+    enabled: false
+    keychain_svc: pharos-pika
+    env_var: PIKA_API_KEY
+    api_endpoint: https://api.pika.art/v1/generate
+    auth_style: bearer
+    async: true
+    models:
+      - id: 2.1
+        durations: [3, 5]
+        resolutions: [720p, 1080p]
+        cost_per_second: 0.07
+        avg_generation_seconds: 60
+      - id: 2.2
+        durations: [3, 5, 10]
+        resolutions: [720p, 1080p]
+        cost_per_second: 0.10
+        avg_generation_seconds: 90
+
+  google:
+    label: Google Veo
+    enabled: false
+    keychain_svc: pharos-google
+    env_var: GOOGLE_AI_API_KEY
+    api_endpoint: https://generativelanguage.googleapis.com/v1beta/models/veo-2:predictLongRunning
+    auth_style: google-key
+    async: true
+    models:
+      - id: veo-2
+        durations: [5, 8]
+        resolutions: [720p, 1080p]
+        cost_per_second: 0.50
+        avg_generation_seconds: 180
+      - id: veo-3
+        durations: [5, 8]
+        resolutions: [720p, 1080p, 4k]
+        cost_per_second: 0.75
+        avg_generation_seconds: 240
+        notes: "When generally available."
+
+  higgsfield:
+    label: Higgsfield (h1, soul)
+    enabled: false
+    keychain_svc: pharos-higgsfield
+    env_var: HIGGSFIELD_API_KEY
+    api_endpoint: https://platform.higgsfield.ai/v1/generate/video
+    auth_style: bearer
+    async: true
+    models:
+      - id: h1
+        durations: [3, 5]
+        resolutions: [720p, 1080p]
+        cost_per_second: 0.08
+        avg_generation_seconds: 90
+
+  openai:
+    label: OpenAI Sora
+    enabled: false
+    keychain_svc: pharos-openai
+    env_var: OPENAI_API_KEY
+    api_endpoint: https://api.openai.com/v1/videos/generations
+    auth_style: bearer
+    async: true
+    notes: "Sora API access still gated. Endpoint shape inferred — verify when GA."
+    models:
+      - id: sora-1
+        durations: [5, 10, 20]
+        resolutions: [720p, 1080p]
+        cost_per_second: 0.30
+        avg_generation_seconds: 300
+
+  luma:
+    label: Luma Labs (Dream Machine)
+    enabled: false
+    keychain_svc: pharos-luma
+    env_var: LUMA_API_KEY
+    api_endpoint: https://api.lumalabs.ai/dream-machine/v1/generations
+    auth_style: bearer
+    async: true
+    models:
+      - id: ray-2
+        durations: [5, 9]
+        resolutions: [720p, 1080p, 4k]
+        cost_per_second: 0.10
+        avg_generation_seconds: 120
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routing rules (Phase 14.2 — live; Filter v2 / Phase 13 will subsume)
+# ─────────────────────────────────────────────────────────────────────────────
+# When the request omits provider prefix (e.g. model: "gpt-image-1"), Pharos
+# resolves via these defaults. When the request uses "auto" or a tier alias
+# (e.g. "image-cheapest", "video-fastest"), Pharos picks the lowest-cost
+# enabled provider that matches the requested size/duration.
+
+routing:
+  image_default_provider: openai
+  image_default_model: gpt-image-1
+  video_default_provider: kling
+  video_default_model: kling-1.6
+  aliases:
+    image-cheapest: stability/sdxl
+    image-fastest: kling/kling-1.5
+    image-quality: openai/gpt-image-1
+    video-cheapest: runway/gen-3
+    video-fastest: pika/2.1
+    video-quality: google/veo-2
