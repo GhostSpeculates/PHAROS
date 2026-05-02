@@ -12,3 +12,6 @@ Thumbs.db
 pharos.yaml
 # Pre-deploy backup snapshots
 .pharos-pre-deploy-backup/
+# Cross-session handoff files (transient)
+SESSION-HANDOFF.md
+AGENT-*-HANDOFF.md
