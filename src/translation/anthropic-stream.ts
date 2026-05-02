@@ -36,6 +36,21 @@ interface InitArgs {
  * We track which Anthropic block index is currently open. Switching
  * from text → tool (or tool index N → tool index M) requires closing
  * the prior block and opening a new one.
+ *
+ * Known limitations (not exercised by Scout's first activation):
+ * 1. Parallel tool_calls in the same delta: if OpenAI sends
+ *    `tool_calls: [{index:0,...}, {index:1,...}]` in one chunk, this
+ *    class processes them sequentially and only one block is open at a
+ *    time. Real parallel tool use across the same delta would emit
+ *    interleaved block_stop/block_start pairs that don't match
+ *    Anthropic's parallel-tool conventions. Revisit when the first
+ *    customer needs parallel tool use.
+ * 2. tc.id missing on first occurrence: if `tool_calls[N].id` arrives
+ *    in delta K+1 instead of delta K, this class emits
+ *    `content_block_start` with a synthetic `tool_${index}` id, which
+ *    won't round-trip correctly when the client echoes it back as
+ *    `tool_use_id`. Mainstream OpenAI providers send the id with the
+ *    first tool_call delta, but quantized local models may not.
  */
 export class AnthropicStreamTranslator {
     private messageStarted = false;
@@ -44,11 +59,16 @@ export class AnthropicStreamTranslator {
     private toolBlockIndexByOpenAIIndex = new Map<number, number>();
     private currentBlockType: 'text' | 'tool_use' | null = null;
     private nextBlockIndex = 0;
+    private finished = false;
 
     constructor(private init: InitArgs) {}
 
     /** Returns the events to emit for this OpenAI delta. */
     handleDelta(chunk: OpenAIDelta): AnthropicStreamEvent[] {
+        // Ignore deltas that arrive after the stream is finished.
+        // Without this, post-finish content events would land after message_stop
+        // and the Agent SDK would treat the stream as malformed.
+        if (this.finished) return [];
         const out: AnthropicStreamEvent[] = [];
         const choice = chunk.choices?.[0];
         if (!choice) return out;
@@ -140,6 +160,10 @@ export class AnthropicStreamTranslator {
         finishReason: string,
         usage: { promptTokens: number; completionTokens: number; totalTokens: number },
     ): AnthropicStreamEvent[] {
+        // Idempotent — double-finish is a no-op rather than emitting
+        // a second message_delta + message_stop pair.
+        if (this.finished) return [];
+        this.finished = true;
         const out: AnthropicStreamEvent[] = [];
 
         // If message_start was never emitted (empty stream), emit it now so the client

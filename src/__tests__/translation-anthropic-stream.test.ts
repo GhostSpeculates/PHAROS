@@ -171,4 +171,38 @@ describe('AnthropicStreamTranslator', () => {
         const types = events.map((e: any) => e.type);
         expect(types).toEqual(['message_start', 'message_delta', 'message_stop']);
     });
+
+    it('handleFinish is idempotent — second call returns no events', () => {
+        const t = new AnthropicStreamTranslator({
+            messageId: 'msg_idem',
+            model: 'm',
+            inputTokens: 1,
+        });
+        t.handleDelta({ choices: [{ delta: { role: 'assistant' } }] });
+        t.handleDelta({ choices: [{ delta: { content: 'x' } }] });
+        const first = t.handleFinish('stop', {
+            promptTokens: 1,
+            completionTokens: 1,
+            totalTokens: 2,
+        });
+        const second = t.handleFinish('stop', {
+            promptTokens: 1,
+            completionTokens: 1,
+            totalTokens: 2,
+        });
+        expect(first.at(-1)).toEqual({ type: 'message_stop' });
+        expect(second).toEqual([]);
+    });
+
+    it('handleDelta after handleFinish is a no-op', () => {
+        const t = new AnthropicStreamTranslator({
+            messageId: 'msg_late',
+            model: 'm',
+            inputTokens: 1,
+        });
+        t.handleDelta({ choices: [{ delta: { role: 'assistant' } }] });
+        t.handleFinish('stop', { promptTokens: 1, completionTokens: 0, totalTokens: 1 });
+        const late = t.handleDelta({ choices: [{ delta: { content: 'too late' } }] });
+        expect(late).toEqual([]);
+    });
 });
