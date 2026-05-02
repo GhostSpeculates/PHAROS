@@ -154,3 +154,23 @@ export interface OpenAIChatRequestShape {
         | { type: 'function'; function: { name: string } };
     thinking?: { type: 'enabled'; budget_tokens: number } | { type: 'disabled' };
 }
+
+// OpenAI chat-completions response shape that the translator consumes.
+export interface OpenAIChatResponseShape {
+    id: string;
+    choices: Array<{
+        index: number;
+        message: {
+            role: 'assistant';
+            content: string | null;
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                function: { name: string; arguments: string };
+            }>;
+        };
+        finish_reason: string;
+    }>;
+    usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    model: string;
+}

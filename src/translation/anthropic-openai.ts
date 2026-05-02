@@ -1,7 +1,10 @@
 import type {
     AnthropicMessagesRequest,
     AnthropicMessage,
+    AnthropicMessagesResponse,
+    AnthropicContentBlock,
     OpenAIChatRequestShape,
+    OpenAIChatResponseShape,
 } from './types.js';
 import type { ChatMessage } from '../providers/types.js';
 
@@ -146,4 +149,73 @@ function translateToolChoice(
     if (tc.type === 'any') return 'required';
     if (tc.type === 'none') return 'none';
     return { type: 'function', function: { name: tc.name } };
+}
+
+/**
+ * Translate a non-streaming OpenAI chat-completions response back to
+ * Anthropic Messages API response shape. Inverse of `anthropicToOpenAI`.
+ *
+ * `requestedModel` is the model the CLIENT asked for (e.g. `pharos-auto:scout`),
+ * not the actual model that was routed to. Anthropic clients expect their
+ * original model id back, not the upstream provider's id.
+ */
+export function openAIToAnthropic(
+    resp: OpenAIChatResponseShape,
+    requestedModel: string,
+): AnthropicMessagesResponse {
+    const choice = resp.choices[0];
+    const msg = choice.message;
+    const content: AnthropicContentBlock[] = [];
+
+    if (msg.content && msg.content.length > 0) {
+        content.push({ type: 'text', text: msg.content });
+    }
+
+    if (msg.tool_calls && msg.tool_calls.length > 0) {
+        for (const tc of msg.tool_calls) {
+            let parsedInput: Record<string, unknown> = {};
+            try {
+                parsedInput = JSON.parse(tc.function.arguments);
+            } catch {
+                // Provider returned malformed JSON — pass empty object rather than crash.
+                // Real-world: this happens with quantized models truncating mid-JSON.
+                parsedInput = {};
+            }
+            content.push({
+                type: 'tool_use',
+                id: tc.id,
+                name: tc.function.name,
+                input: parsedInput,
+            });
+        }
+    }
+
+    return {
+        id: resp.id,
+        type: 'message',
+        role: 'assistant',
+        content,
+        model: requestedModel,
+        stop_reason: mapFinishReason(choice.finish_reason),
+        stop_sequence: null,
+        usage: {
+            input_tokens: resp.usage.prompt_tokens,
+            output_tokens: resp.usage.completion_tokens,
+        },
+    };
+}
+
+function mapFinishReason(reason: string): AnthropicMessagesResponse['stop_reason'] {
+    switch (reason) {
+        case 'stop':
+            return 'end_turn';
+        case 'length':
+            return 'max_tokens';
+        case 'tool_calls':
+            return 'tool_use';
+        case 'stop_sequence':
+            return 'stop_sequence';
+        default:
+            return 'end_turn';
+    }
 }

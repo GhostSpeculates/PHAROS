@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { anthropicToOpenAI } from '../translation/anthropic-openai.js';
+import { openAIToAnthropic } from '../translation/anthropic-openai.js';
 import type { AnthropicMessagesRequest } from '../translation/types.js';
 
 describe('anthropicToOpenAI', () => {
@@ -249,5 +250,191 @@ describe('anthropicToOpenAI', () => {
         expect(out.top_p).toBe(0.9);
         expect(out.stop).toEqual(['STOP']);
         expect(out.thinking).toEqual({ type: 'enabled', budget_tokens: 1000 });
+    });
+});
+
+describe('openAIToAnthropic', () => {
+    it('translates a text-only response', () => {
+        const out = openAIToAnthropic(
+            {
+                id: 'chatcmpl-123',
+                choices: [
+                    {
+                        index: 0,
+                        message: { role: 'assistant', content: 'Hi, friend.' },
+                        finish_reason: 'stop',
+                    },
+                ],
+                usage: { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 },
+                model: 'gpt-4o',
+            },
+            'pharos-auto:scout',
+        );
+        expect(out.type).toBe('message');
+        expect(out.role).toBe('assistant');
+        expect(out.content).toEqual([{ type: 'text', text: 'Hi, friend.' }]);
+        expect(out.stop_reason).toBe('end_turn');
+        expect(out.usage).toEqual({ input_tokens: 10, output_tokens: 4 });
+        expect(out.model).toBe('pharos-auto:scout');
+    });
+
+    it('translates a tool_calls response', () => {
+        const out = openAIToAnthropic(
+            {
+                id: 'chatcmpl-456',
+                choices: [
+                    {
+                        index: 0,
+                        message: {
+                            role: 'assistant',
+                            content: 'Let me check.',
+                            tool_calls: [
+                                {
+                                    id: 'call_xyz',
+                                    type: 'function',
+                                    function: {
+                                        name: 'get_weather',
+                                        arguments: '{"location":"NY"}',
+                                    },
+                                },
+                            ],
+                        },
+                        finish_reason: 'tool_calls',
+                    },
+                ],
+                usage: { prompt_tokens: 50, completion_tokens: 12, total_tokens: 62 },
+                model: 'claude-sonnet',
+            },
+            'pharos-auto',
+        );
+        expect(out.content).toEqual([
+            { type: 'text', text: 'Let me check.' },
+            {
+                type: 'tool_use',
+                id: 'call_xyz',
+                name: 'get_weather',
+                input: { location: 'NY' },
+            },
+        ]);
+        expect(out.stop_reason).toBe('tool_use');
+    });
+
+    it('handles tool_calls with no text content', () => {
+        const out = openAIToAnthropic(
+            {
+                id: 'chatcmpl-789',
+                choices: [
+                    {
+                        index: 0,
+                        message: {
+                            role: 'assistant',
+                            content: null,
+                            tool_calls: [
+                                {
+                                    id: 'call_only',
+                                    type: 'function',
+                                    function: { name: 'lookup', arguments: '{}' },
+                                },
+                            ],
+                        },
+                        finish_reason: 'tool_calls',
+                    },
+                ],
+                usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+                model: 'm',
+            },
+            'pharos-auto',
+        );
+        expect(out.content).toEqual([
+            { type: 'tool_use', id: 'call_only', name: 'lookup', input: {} },
+        ]);
+    });
+
+    it('returns empty input object for malformed tool argument JSON', () => {
+        const out = openAIToAnthropic(
+            {
+                id: 'chatcmpl-bad',
+                choices: [
+                    {
+                        index: 0,
+                        message: {
+                            role: 'assistant',
+                            content: null,
+                            tool_calls: [
+                                {
+                                    id: 'call_bad',
+                                    type: 'function',
+                                    function: { name: 'broken', arguments: '{not valid json' },
+                                },
+                            ],
+                        },
+                        finish_reason: 'tool_calls',
+                    },
+                ],
+                usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+                model: 'm',
+            },
+            'pharos-auto',
+        );
+        expect((out.content[0] as any).input).toEqual({});
+    });
+
+    it('maps finish_reason values correctly', () => {
+        const base = {
+            id: 'x',
+            choices: [
+                {
+                    index: 0,
+                    message: { role: 'assistant' as const, content: 'x' },
+                    finish_reason: 'stop',
+                },
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            model: 'm',
+        };
+        expect(openAIToAnthropic({ ...base }, 'm').stop_reason).toBe('end_turn');
+        expect(
+            openAIToAnthropic(
+                { ...base, choices: [{ ...base.choices[0], finish_reason: 'length' }] },
+                'm',
+            ).stop_reason,
+        ).toBe('max_tokens');
+        expect(
+            openAIToAnthropic(
+                { ...base, choices: [{ ...base.choices[0], finish_reason: 'tool_calls' }] },
+                'm',
+            ).stop_reason,
+        ).toBe('tool_use');
+        expect(
+            openAIToAnthropic(
+                { ...base, choices: [{ ...base.choices[0], finish_reason: 'stop_sequence' }] },
+                'm',
+            ).stop_reason,
+        ).toBe('stop_sequence');
+    });
+
+    it('round-trips: anthropicToOpenAI(req) then openAIToAnthropic(resp) preserves shape', () => {
+        const req: AnthropicMessagesRequest = {
+            model: 'pharos-auto:scout',
+            max_tokens: 100,
+            messages: [{ role: 'user', content: 'hi' }],
+            stream: false,
+        };
+        const oReq = anthropicToOpenAI(req);
+        const oResp = {
+            id: 'chatcmpl-rt',
+            choices: [
+                {
+                    index: 0,
+                    message: { role: 'assistant' as const, content: 'hello' },
+                    finish_reason: 'stop',
+                },
+            ],
+            usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+            model: oReq.model,
+        };
+        const aResp = openAIToAnthropic(oResp, req.model);
+        expect(aResp.role).toBe('assistant');
+        expect(aResp.content[0]).toEqual({ type: 'text', text: 'hello' });
     });
 });
