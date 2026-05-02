@@ -163,6 +163,9 @@ export function openAIToAnthropic(
     resp: OpenAIChatResponseShape,
     requestedModel: string,
 ): AnthropicMessagesResponse {
+    if (resp.choices.length === 0) {
+        throw new Error('openAIToAnthropic: response contains no choices');
+    }
     const choice = resp.choices[0];
     const msg = choice.message;
     const content: AnthropicContentBlock[] = [];

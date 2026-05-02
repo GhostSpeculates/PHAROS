@@ -437,4 +437,14 @@ describe('openAIToAnthropic', () => {
         expect(aResp.role).toBe('assistant');
         expect(aResp.content[0]).toEqual({ type: 'text', text: 'hello' });
     });
+
+    it('throws a clear error when choices is empty', () => {
+        const resp = {
+            id: 'chatcmpl-empty',
+            choices: [],
+            usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            model: 'm',
+        };
+        expect(() => openAIToAnthropic(resp, 'pharos-auto')).toThrow(/no choices/);
+    });
 });
