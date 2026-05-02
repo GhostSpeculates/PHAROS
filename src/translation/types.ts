@@ -7,6 +7,8 @@ const TextBlockSchema = z.object({
     text: z.string().max(500000),
 });
 
+// `input` here = arguments the model supplied for the tool call.
+// (Compare with `AnthropicToolSchema.input_schema` = JSON Schema definition of the tool.)
 const ToolUseBlockSchema = z.object({
     type: z.literal('tool_use'),
     id: z.string(),
@@ -82,7 +84,7 @@ export const AnthropicMessagesRequestSchema = z.object({
     top_p: z.number().min(0).max(1).optional(),
     top_k: z.number().int().positive().optional(),
     stop_sequences: z.array(z.string()).optional(),
-    stream: z.boolean().optional().default(false),
+    stream: z.boolean().default(false),
     thinking: AnthropicThinkingSchema.optional(),
     metadata: z.object({ user_id: z.string().optional() }).optional(),
 });
@@ -91,6 +93,7 @@ export type AnthropicMessagesRequest = z.infer<typeof AnthropicMessagesRequestSc
 export type AnthropicContentBlock = z.infer<typeof ContentBlockSchema>;
 export type AnthropicMessage = z.infer<typeof AnthropicMessageSchema>;
 
+// Response/stream shapes are output-only — no inbound Zod validation needed.
 export interface AnthropicMessagesResponse {
     id: string;
     type: 'message';
@@ -119,7 +122,10 @@ export type AnthropicStreamEvent =
     | { type: 'content_block_stop'; index: number }
     | {
           type: 'message_delta';
-          delta: { stop_reason: AnthropicMessagesResponse['stop_reason']; stop_sequence: string | null };
+          delta: {
+              stop_reason: AnthropicMessagesResponse['stop_reason'];
+              stop_sequence: string | null;
+          };
           usage: { output_tokens: number };
       }
     | { type: 'message_stop' }
