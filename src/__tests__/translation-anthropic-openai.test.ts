@@ -104,6 +104,40 @@ describe('anthropicToOpenAI', () => {
         });
     });
 
+    it('sets content to null when assistant emits only tool_use blocks', () => {
+        const req: AnthropicMessagesRequest = {
+            model: 'pharos-auto',
+            max_tokens: 100,
+            messages: [
+                { role: 'user', content: 'whats the weather?' },
+                {
+                    role: 'assistant',
+                    content: [
+                        {
+                            type: 'tool_use',
+                            id: 'toolu_xyz',
+                            name: 'get_weather',
+                            input: { location: 'NY' },
+                        },
+                    ],
+                },
+            ],
+            stream: false,
+        };
+        const out = anthropicToOpenAI(req);
+        expect(out.messages[1]).toEqual({
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+                {
+                    id: 'toolu_xyz',
+                    type: 'function',
+                    function: { name: 'get_weather', arguments: '{"location":"NY"}' },
+                },
+            ],
+        });
+    });
+
     it('translates tool_result user blocks to OpenAI tool messages', () => {
         const req: AnthropicMessagesRequest = {
             model: 'pharos-auto',
@@ -128,6 +162,32 @@ describe('anthropicToOpenAI', () => {
             tool_call_id: 'toolu_abc',
             content: '72°F sunny',
         });
+    });
+
+    it('emits tool messages before user text in mixed user blocks', () => {
+        const req: AnthropicMessagesRequest = {
+            model: 'pharos-auto',
+            max_tokens: 100,
+            messages: [
+                {
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 'toolu_abc',
+                            content: '72°F sunny',
+                        },
+                        { type: 'text', text: 'Thanks. Now what about LA?' },
+                    ],
+                },
+            ],
+            stream: false,
+        };
+        const out = anthropicToOpenAI(req);
+        expect(out.messages).toEqual([
+            { role: 'tool', tool_call_id: 'toolu_abc', content: '72°F sunny' },
+            { role: 'user', content: 'Thanks. Now what about LA?' },
+        ]);
     });
 
     it('translates Anthropic tools[] to OpenAI tools[]', () => {

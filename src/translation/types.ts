@@ -1,5 +1,6 @@
 // src/translation/types.ts
 import { z } from 'zod';
+import type { ChatMessage } from '../providers/types.js';
 
 // ─── Anthropic content blocks ───
 const TextBlockSchema = z.object({
@@ -130,3 +131,26 @@ export type AnthropicStreamEvent =
       }
     | { type: 'message_stop' }
     | { type: 'ping' };
+
+// OpenAI chat-completions request shape that the translator outputs.
+// Lives here (not in the translator file) so future files can import
+// the type without pulling in the implementation module.
+export interface OpenAIChatRequestShape {
+    model: string;
+    messages: ChatMessage[];
+    max_tokens: number;
+    temperature?: number;
+    top_p?: number;
+    stop?: string[];
+    stream?: boolean;
+    tools?: Array<{
+        type: 'function';
+        function: { name: string; description?: string; parameters: object };
+    }>;
+    tool_choice?:
+        | 'auto'
+        | 'required'
+        | 'none'
+        | { type: 'function'; function: { name: string } };
+    thinking?: { type: 'enabled'; budget_tokens: number } | { type: 'disabled' };
+}

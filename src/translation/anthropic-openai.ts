@@ -1,6 +1,7 @@
 import type {
     AnthropicMessagesRequest,
     AnthropicMessage,
+    OpenAIChatRequestShape,
 } from './types.js';
 import type { ChatMessage } from '../providers/types.js';
 
@@ -10,26 +11,6 @@ import type { ChatMessage } from '../providers/types.js';
  *
  * Pure function — no I/O. Same input always produces same output.
  */
-export interface OpenAIChatRequestShape {
-    model: string;
-    messages: ChatMessage[];
-    max_tokens: number;
-    temperature?: number;
-    top_p?: number;
-    stop?: string[];
-    stream?: boolean;
-    tools?: Array<{
-        type: 'function';
-        function: { name: string; description?: string; parameters: object };
-    }>;
-    tool_choice?:
-        | 'auto'
-        | 'required'
-        | 'none'
-        | { type: 'function'; function: { name: string } };
-    thinking?: { type: 'enabled'; budget_tokens: number } | { type: 'disabled' };
-}
-
 export function anthropicToOpenAI(req: AnthropicMessagesRequest): OpenAIChatRequestShape {
     const messages: ChatMessage[] = [];
 
