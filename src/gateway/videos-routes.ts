@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PharosConfig } from '../config/schema.js';
 import type { VideosRouter } from '../providers/video.js';
 import type { TrackingStore } from '../tracking/store.js';
+import type { WalletStore } from '../tracking/wallet-store.js';
 import type { Logger } from '../utils/logger.js';
 import type { VideoJobStore } from '../jobs/video-poller.js';
 import { VideosRequestSchema } from './schemas/videos-request.js';
@@ -27,8 +28,9 @@ export function registerVideosRoutes(
     jobStore: VideoJobStore,
     tracker: TrackingStore | null,
     logger: Logger,
+    wallet?: WalletStore | null,
 ): void {
-    const authMiddleware = createAuthMiddleware(config);
+    const authMiddleware = createAuthMiddleware(config, wallet);
     const agentRateLimiter = createAgentRateLimiter(config.server.agentRateLimitPerMinute, logger);
 
     // ─── POST /v1/videos/generations — submit a job ───────────────────────
@@ -146,6 +148,22 @@ export function registerVideosRoutes(
             reply.header('X-Pharos-Request-Id', requestId);
             if (failoverAttempts > 0) {
                 reply.header('X-Pharos-Retries', String(failoverAttempts));
+            }
+
+            // Stamp wallet billing — onResponse hook reads this and debits at submit.
+            // Wave 1 simplification: video bills at submit using estimated cost
+            // (duration × pricePerSecond). Failed jobs still bill — customer can
+            // request refund via support. Phase 5 wires reserveDebit/settleDebit
+            // through the poller to auto-refund failed jobs.
+            const estimatedUpstreamUsd = body.duration_seconds * candidate.pricePerSecond;
+            if (estimatedUpstreamUsd > 0) {
+                request.pharosBilling = {
+                    upstream_usd: estimatedUpstreamUsd,
+                    model: candidate.model,
+                    provider: candidate.provider,
+                    modality: 'video',
+                    request_id: requestId,
+                };
             }
 
             reply.status(202).send({

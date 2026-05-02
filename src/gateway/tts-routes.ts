@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PharosConfig } from '../config/schema.js';
 import type { TTSRouter } from '../providers/tts.js';
 import type { TrackingStore } from '../tracking/store.js';
+import type { WalletStore } from '../tracking/wallet-store.js';
 import type { Logger } from '../utils/logger.js';
 import { TTSRequestSchema } from './schemas/tts-request.js';
 import { buildErrorResponse } from './schemas/response.js';
@@ -23,8 +24,9 @@ export function registerTTSRoutes(
     ttsRouter: TTSRouter,
     tracker: TrackingStore | null,
     logger: Logger,
+    wallet?: WalletStore | null,
 ): void {
-    const authMiddleware = createAuthMiddleware(config);
+    const authMiddleware = createAuthMiddleware(config, wallet);
     const agentRateLimiter = createAgentRateLimiter(config.server.agentRateLimitPerMinute, logger);
 
     app.post('/v1/audio/speech', { preHandler: authMiddleware }, async (request, reply) => {
@@ -102,6 +104,17 @@ export function registerTTSRoutes(
             });
 
             const cost = calculateCost(result.provider, result.model, result.characters, 0);
+
+            // Stamp wallet billing — onResponse hook reads this and debits the user.
+            if (cost > 0) {
+                request.pharosBilling = {
+                    upstream_usd: cost,
+                    model: result.model,
+                    provider: result.provider,
+                    modality: 'voice',
+                    request_id: requestId,
+                };
+            }
 
             // 5. Track in SQLite (tier='tts', characters stored in tokens_in)
             if (tracker) {

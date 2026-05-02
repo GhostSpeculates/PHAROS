@@ -147,6 +147,20 @@ export class WalletStore {
         return Number(result.lastInsertRowid);
     }
 
+    /**
+     * Live balance in cents — sum of ALL signed amount_cents in the ledger.
+     * Use this for the pre-call balance guard (block requests when ≤ 0).
+     * Cheap on SQLite; ledger has an index on (user_id, ts).
+     */
+    getBalanceCents(userId: number): number {
+        const row = this.db.prepare(`
+            SELECT COALESCE(SUM(amount_cents), 0) AS s
+            FROM wallet_ledger
+            WHERE user_id = ?
+        `).get(userId) as { s: number };
+        return row.s ?? 0;
+    }
+
     /** Aggregate balance for /v1/credits — sums signed amount_cents across the ledger. */
     creditsForUser(userId: number): { totalCreditsUsd: number; totalUsageUsd: number } {
         const credits = this.db.prepare(`

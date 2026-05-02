@@ -23,6 +23,7 @@ import { registerVideosRoutes } from './gateway/videos-routes.js';
 import { VideosRouter } from './providers/video.js';
 import { VideoJobStore } from './jobs/video-poller.js';
 import { createErrorHandler } from './gateway/middleware/error-handler.js';
+import { registerWalletDebitHook } from './gateway/middleware/wallet-debit.js';
 import { createLogger, type Logger } from './utils/logger.js';
 import { initPricing } from './tracking/cost-calculator.js';
 import { initAlerts, sendAlert } from './utils/alerts.js';
@@ -141,31 +142,38 @@ export async function createServer(config: PharosConfig): Promise<{
     // Register error handler
     app.setErrorHandler(createErrorHandler(logger));
 
+    // ─── Wave 5 Wallet — global onResponse debit hook ───
+    // Must register BEFORE routes so it fires for every billed endpoint.
+    // No-ops for operator requests (config.auth.apiKey holders) and unstamped ones.
+    if (wallet) {
+        registerWalletDebitHook(app, wallet, logger);
+    }
+
     // Register routes
-    registerRoutes(app, config, classifier, router, registry, tracker, logger, conversationTracker, learningStore, phase2Metrics);
+    registerRoutes(app, config, classifier, router, registry, tracker, logger, conversationTracker, learningStore, phase2Metrics, wallet);
 
     // ─── Embeddings (Phase 1 multi-modal) ───
     if (config.embeddings?.enabled !== false) {
         const embeddingsRouter = new EmbeddingsRouter(config, logger);
-        registerEmbeddingsRoutes(app, config, embeddingsRouter, tracker, logger);
+        registerEmbeddingsRoutes(app, config, embeddingsRouter, tracker, logger, wallet);
     }
 
     // ─── TTS (Phase 2 multi-modal) ───
     if (config.tts?.enabled !== false) {
         const ttsRouter = new TTSRouter(config, logger);
-        registerTTSRoutes(app, config, ttsRouter, tracker, logger);
+        registerTTSRoutes(app, config, ttsRouter, tracker, logger, wallet);
     }
 
     // ─── STT (Phase 2 multi-modal) ───
     if (config.stt?.enabled !== false) {
         const sttRouter = new STTRouter(config, logger);
-        registerSTTRoutes(app, config, sttRouter, tracker, logger);
+        registerSTTRoutes(app, config, sttRouter, tracker, logger, wallet);
     }
 
     // ─── Images (Phase 3 multi-modal) ───
     if (config.images?.enabled !== false) {
         const imagesRouter = new ImagesRouter(config, logger);
-        registerImagesRoutes(app, config, imagesRouter, tracker, logger);
+        registerImagesRoutes(app, config, imagesRouter, tracker, logger, wallet);
     }
 
     // ─── Videos (Phase 4 multi-modal — async with background poller) ───
@@ -174,7 +182,7 @@ export async function createServer(config: PharosConfig): Promise<{
         const videosRouter = new VideosRouter(config, logger);
         videoJobStore = new VideoJobStore(videosRouter, tracker, logger);
         videoJobStore.start();
-        registerVideosRoutes(app, config, videosRouter, videoJobStore, tracker, logger);
+        registerVideosRoutes(app, config, videosRouter, videoJobStore, tracker, logger, wallet);
     }
 
     // Wave 5 — wallet routes (only if wallet store initialized)

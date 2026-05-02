@@ -5,6 +5,7 @@ import type { ModelRouter, RoutingDecision } from '../router/index.js';
 import type { ProviderRegistry } from '../providers/index.js';
 import type { ChatMessage, ChatResponse } from '../providers/types.js';
 import type { TrackingStore } from '../tracking/store.js';
+import type { WalletStore } from '../tracking/wallet-store.js';
 import type { Logger } from '../utils/logger.js';
 import { ChatCompletionRequestSchema } from './schemas/request.js';
 import { buildChatCompletionResponse, buildStreamChunk, buildErrorResponse } from './schemas/response.js';
@@ -41,8 +42,9 @@ export function registerRoutes(
     conversationTracker?: ConversationTracker,
     learningStore?: PerformanceLearningStore | null,
     phase2Metrics?: Phase2Metrics,
+    wallet?: WalletStore | null,
 ): void {
-    const authMiddleware = createAuthMiddleware(config);
+    const authMiddleware = createAuthMiddleware(config, wallet);
     const agentRateLimiter = createAgentRateLimiter(config.server.agentRateLimitPerMinute, logger);
 
     // ─── Root — Status Dashboard ───
@@ -739,6 +741,18 @@ ${recentRows}
                             }
 
                             const cost = calculateCost(candidate.provider, candidate.model, finalUsage.promptTokens, finalUsage.completionTokens);
+
+                            // Stamp wallet billing — onResponse hook reads this and debits the user.
+                            if (cost > 0) {
+                                request.pharosBilling = {
+                                    upstream_usd: cost,
+                                    model: candidate.model,
+                                    provider: candidate.provider,
+                                    modality: 'chat',
+                                    request_id: requestId,
+                                };
+                            }
+
                             logger.info(
                                 {
                                     requestId,
@@ -899,6 +913,17 @@ ${recentRows}
             }
 
             const cost = calculateCost(usedProvider, usedModel, response.usage.promptTokens, response.usage.completionTokens);
+
+            // Stamp wallet billing — onResponse hook reads this and debits the user.
+            if (cost > 0) {
+                request.pharosBilling = {
+                    upstream_usd: cost,
+                    model: usedModel,
+                    provider: usedProvider,
+                    modality: 'chat',
+                    request_id: requestId,
+                };
+            }
 
             // Debug logging — capture first 500 chars of output when enabled
             const debugOutput = config.server.debugLogging ? response.content.slice(0, 500) : undefined;

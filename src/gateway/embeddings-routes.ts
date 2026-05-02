@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PharosConfig } from '../config/schema.js';
 import type { EmbeddingsRouter } from '../providers/embeddings.js';
 import type { TrackingStore } from '../tracking/store.js';
+import type { WalletStore } from '../tracking/wallet-store.js';
 import type { Logger } from '../utils/logger.js';
 import { EmbeddingsRequestSchema } from './schemas/embeddings-request.js';
 import { buildErrorResponse } from './schemas/response.js';
@@ -24,8 +25,9 @@ export function registerEmbeddingsRoutes(
     embeddingsRouter: EmbeddingsRouter,
     tracker: TrackingStore | null,
     logger: Logger,
+    wallet?: WalletStore | null,
 ): void {
-    const authMiddleware = createAuthMiddleware(config);
+    const authMiddleware = createAuthMiddleware(config, wallet);
     const agentRateLimiter = createAgentRateLimiter(config.server.agentRateLimitPerMinute, logger);
 
     app.post('/v1/embeddings', { preHandler: authMiddleware }, async (request, reply) => {
@@ -109,6 +111,18 @@ export function registerEmbeddingsRoutes(
             };
 
             const cost = calculateCost(result.provider, result.model, result.usage.promptTokens, 0);
+
+            // 5b. Stamp wallet billing — onResponse hook reads this and debits the user.
+            // No-op for operator requests (the hook checks isOperator). Skipped if cost=0.
+            if (cost > 0) {
+                request.pharosBilling = {
+                    upstream_usd: cost,
+                    model: result.model,
+                    provider: result.provider,
+                    modality: 'embedding',
+                    request_id: requestId,
+                };
+            }
 
             // 6. Track in SQLite (reuses requests table — tier='embeddings' marks it as non-chat)
             if (tracker) {
