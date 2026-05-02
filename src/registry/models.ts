@@ -12,7 +12,11 @@ export type ModelCapability =
     | 'reasoning'
     | 'creative'
     | 'conversation'
-    | 'multilingual';
+    | 'multilingual'
+    | 'embedding'
+    | 'tts'
+    | 'stt'
+    | 'image';
 
 export type SpeedTier = 'fast' | 'medium' | 'slow';
 
@@ -278,6 +282,154 @@ export const MODEL_REGISTRY: ModelRegistryEntry[] = [
         contextWindow: 131_072,
         capabilities: ['code', 'math', 'reasoning', 'conversation', 'multilingual'],
         pricing: { inputPerMillion: 0.50, outputPerMillion: 1.40 },
+        speed: 'medium',
+    },
+
+    // ─── Embeddings (Phase 1 multi-modal) ───
+    {
+        id: 'text-embedding-3-small',
+        provider: 'openai',
+        displayName: 'OpenAI Embedding 3 Small',
+        contextWindow: 8191,
+        capabilities: ['embedding'],
+        pricing: { inputPerMillion: 0.020, outputPerMillion: 0 },
+        speed: 'fast',
+    },
+    {
+        id: 'voyage-4-lite',
+        provider: 'voyage',
+        displayName: 'Voyage 4 Lite',
+        contextWindow: 32_000,
+        capabilities: ['embedding'],
+        pricing: { inputPerMillion: 0.020, outputPerMillion: 0 },
+        speed: 'fast',
+    },
+    {
+        id: 'jina-embeddings-v4',
+        provider: 'jina',
+        displayName: 'Jina Embeddings v4',
+        contextWindow: 32_000,
+        capabilities: ['embedding'],
+        pricing: { inputPerMillion: 0.020, outputPerMillion: 0 },
+        speed: 'fast',
+    },
+
+    // ─── TTS (Phase 2 multi-modal) ───
+    // Pricing here is per-character ($/M-chars), not per-token.
+    {
+        id: 'tts-1',
+        provider: 'openai',
+        displayName: 'OpenAI TTS-1',
+        contextWindow: 4096,
+        capabilities: ['tts'],
+        pricing: { inputPerMillion: 15.0, outputPerMillion: 0 },
+        speed: 'fast',
+    },
+    {
+        id: 'eleven_turbo_v2_5',
+        provider: 'elevenlabs',
+        displayName: 'ElevenLabs Turbo v2.5 (voice cloning)',
+        contextWindow: 4096,
+        capabilities: ['tts'],
+        pricing: { inputPerMillion: 180.0, outputPerMillion: 0 },
+        speed: 'fast',
+    },
+    {
+        id: 'sonic-2',
+        provider: 'cartesia',
+        displayName: 'Cartesia Sonic 2 (real-time, <100ms)',
+        contextWindow: 4096,
+        capabilities: ['tts'],
+        pricing: { inputPerMillion: 30.0, outputPerMillion: 0 },
+        speed: 'fast',
+    },
+
+    // ─── STT (Phase 2 multi-modal) ───
+    // Pricing encoded as cost per 1,000,000 audio-seconds — STT bills per-minute, not per-token.
+    // Route sets tokens_in = durationSeconds, so cost = durationSeconds * (rate/3600M) collapses correctly.
+    {
+        id: 'whisper-large-v3-turbo',
+        provider: 'groq',
+        displayName: 'Groq Whisper Large v3 Turbo',
+        contextWindow: 0,
+        capabilities: ['stt'],
+        pricing: { inputPerMillion: 11.111, outputPerMillion: 0 },
+        speed: 'fast',
+    },
+    {
+        id: 'nova-3',
+        provider: 'deepgram',
+        displayName: 'Deepgram Nova-3 (real-time)',
+        contextWindow: 0,
+        capabilities: ['stt'],
+        pricing: { inputPerMillion: 80.0, outputPerMillion: 0 },
+        speed: 'fast',
+    },
+    {
+        id: 'ink-whisper',
+        provider: 'cartesia',
+        displayName: 'Cartesia Ink-Whisper (streaming)',
+        contextWindow: 0,
+        capabilities: ['stt'],
+        pricing: { inputPerMillion: 36.111, outputPerMillion: 0 },
+        speed: 'fast',
+    },
+
+    // ─── Images (Phase 3 multi-modal) ───
+    // Pricing encoded as cost per 1,000,000 images (rate × 1e6).
+    // Route sets tokens_in = image count, so cost = n × pricePerImage collapses correctly.
+    {
+        id: 'fal-ai/flux/schnell',
+        provider: 'fal',
+        displayName: 'FLUX.1 Schnell via fal.ai (cheapest tier)',
+        contextWindow: 0,
+        capabilities: ['image'],
+        pricing: { inputPerMillion: 3000.0, outputPerMillion: 0 },
+        speed: 'fast',
+    },
+    {
+        id: 'fal-ai/flux-pro/v1.1',
+        provider: 'fal',
+        displayName: 'FLUX 1.1 Pro via fal.ai (balanced tier)',
+        contextWindow: 0,
+        capabilities: ['image'],
+        pricing: { inputPerMillion: 40000.0, outputPerMillion: 0 },
+        speed: 'medium',
+    },
+    {
+        id: 'fal-ai/flux-pro/v1.1-ultra',
+        provider: 'fal',
+        displayName: 'FLUX 1.1 Pro Ultra via fal.ai (best tier)',
+        contextWindow: 0,
+        capabilities: ['image'],
+        pricing: { inputPerMillion: 60000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+    {
+        id: 'flux-pro-1.1',
+        provider: 'bfl',
+        displayName: 'FLUX 1.1 Pro via BFL direct',
+        contextWindow: 0,
+        capabilities: ['image'],
+        pricing: { inputPerMillion: 40000.0, outputPerMillion: 0 },
+        speed: 'medium',
+    },
+    {
+        id: 'flux-pro-1.1-ultra',
+        provider: 'bfl',
+        displayName: 'FLUX 1.1 Pro Ultra via BFL direct',
+        contextWindow: 0,
+        capabilities: ['image'],
+        pricing: { inputPerMillion: 60000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+    {
+        id: 'dall-e-3',
+        provider: 'openai',
+        displayName: 'OpenAI DALL-E 3 (resilience backstop, universal access)',
+        contextWindow: 0,
+        capabilities: ['image'],
+        pricing: { inputPerMillion: 40000.0, outputPerMillion: 0 },
         speed: 'medium',
     },
 ];

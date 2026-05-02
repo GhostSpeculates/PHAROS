@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import multipart from '@fastify/multipart';
 import type { PharosConfig } from './config/schema.js';
 import { QueryClassifier } from './classifier/index.js';
 import { ModelRouter } from './router/index.js';
@@ -10,6 +11,14 @@ import { WalletStore } from './tracking/wallet-store.js';
 import { registerRoutes } from './gateway/router.js';
 import { registerWalletRoutes } from './gateway/wallet-routes.js';
 import { registerFilterRoutes } from './gateway/filter-routes.js';
+import { registerEmbeddingsRoutes } from './gateway/embeddings-routes.js';
+import { EmbeddingsRouter } from './providers/embeddings.js';
+import { registerTTSRoutes } from './gateway/tts-routes.js';
+import { TTSRouter } from './providers/tts.js';
+import { registerSTTRoutes } from './gateway/stt-routes.js';
+import { STTRouter } from './providers/stt.js';
+import { registerImagesRoutes } from './gateway/images-routes.js';
+import { ImagesRouter } from './providers/images.js';
 import { createErrorHandler } from './gateway/middleware/error-handler.js';
 import { createLogger, type Logger } from './utils/logger.js';
 import { initPricing } from './tracking/cost-calculator.js';
@@ -117,11 +126,44 @@ export async function createServer(config: PharosConfig): Promise<{
         timeWindow: '1 minute',
     });
 
+    // Multipart — required for STT file uploads (Phase 2)
+    await app.register(multipart, {
+        limits: {
+            fileSize: config.server.bodyLimitMb * 1024 * 1024,
+            files: 1,
+            fields: 10,
+        },
+    });
+
     // Register error handler
     app.setErrorHandler(createErrorHandler(logger));
 
     // Register routes
     registerRoutes(app, config, classifier, router, registry, tracker, logger, conversationTracker, learningStore, phase2Metrics);
+
+    // ─── Embeddings (Phase 1 multi-modal) ───
+    if (config.embeddings?.enabled !== false) {
+        const embeddingsRouter = new EmbeddingsRouter(config, logger);
+        registerEmbeddingsRoutes(app, config, embeddingsRouter, tracker, logger);
+    }
+
+    // ─── TTS (Phase 2 multi-modal) ───
+    if (config.tts?.enabled !== false) {
+        const ttsRouter = new TTSRouter(config, logger);
+        registerTTSRoutes(app, config, ttsRouter, tracker, logger);
+    }
+
+    // ─── STT (Phase 2 multi-modal) ───
+    if (config.stt?.enabled !== false) {
+        const sttRouter = new STTRouter(config, logger);
+        registerSTTRoutes(app, config, sttRouter, tracker, logger);
+    }
+
+    // ─── Images (Phase 3 multi-modal) ───
+    if (config.images?.enabled !== false) {
+        const imagesRouter = new ImagesRouter(config, logger);
+        registerImagesRoutes(app, config, imagesRouter, tracker, logger);
+    }
 
     // Wave 5 — wallet routes (only if wallet store initialized)
     if (wallet) {
@@ -149,10 +191,14 @@ export async function createServer(config: PharosConfig): Promise<{
             await app.listen({ port: config.server.port, host: config.server.host });
             logger.info('────────────────────────────────────────────');
             logger.info(`🚀 Pharos is live on http://localhost:${config.server.port}`);
-            logger.info(`   POST /v1/chat/completions  →  Routing endpoint`);
-            logger.info(`   GET  /v1/models             →  List models`);
-            logger.info(`   GET  /v1/stats              →  Cost & savings`);
-            logger.info(`   GET  /health                →  Health check`);
+            logger.info(`   POST /v1/chat/completions      →  Chat routing endpoint`);
+            logger.info(`   POST /v1/embeddings            →  Embeddings routing endpoint`);
+            logger.info(`   POST /v1/audio/speech          →  TTS routing endpoint`);
+            logger.info(`   POST /v1/audio/transcriptions  →  STT transcription endpoint`);
+            logger.info(`   POST /v1/images/generations    →  Image generation endpoint (quality-tier)`);
+            logger.info(`   GET  /v1/models                →  List models`);
+            logger.info(`   GET  /v1/stats                 →  Cost & savings`);
+            logger.info(`   GET  /health                   →  Health check`);
             logger.info('────────────────────────────────────────────');
 
             // Startup alert — include self-test results if available

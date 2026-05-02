@@ -162,6 +162,50 @@ export const ConversationConfigSchema = z.object({
     enabled: z.boolean().default(true),
 });
 
+// ─── Embeddings configuration ───
+// Provider list ordered by routing priority (cost-tied, so first healthy wins).
+export const EmbeddingProviderEntrySchema = z.object({
+    name: z.string(),    // matches a key in top-level `providers:` block
+    model: z.string(),   // model ID sent to the provider's /v1/embeddings endpoint
+});
+
+export const EmbeddingsConfigSchema = z.object({
+    enabled: z.boolean().default(true),
+    providers: z.array(EmbeddingProviderEntrySchema).min(1),
+});
+
+// ─── TTS configuration (Phase 2) ───
+// TTSRouter hardcodes the three providers (openai/elevenlabs/cartesia) since
+// each has a fundamentally different request shape; toggle is enable-only.
+export const TTSConfigSchema = z.object({
+    enabled: z.boolean().default(true),
+});
+
+// ─── STT configuration (Phase 2) ───
+// Same shape as TTS — STTRouter hardcodes groq/deepgram/cartesia.
+export const STTConfigSchema = z.object({
+    enabled: z.boolean().default(true),
+});
+
+// ─── Images configuration (Phase 3) ───
+// Quality-tier mapping is the actual product wedge — caller passes
+// `quality: best | balanced | cheapest` and Pharos resolves it to a
+// (provider, model) candidate with built-in fallback to lower tiers.
+export const ImageQualityCandidateSchema = z.object({
+    provider: z.string(),
+    model: z.string(),
+    pricePerImage: z.number().nonnegative(),
+});
+
+export const ImagesConfigSchema = z.object({
+    enabled: z.boolean().default(true),
+    qualityTiers: z.object({
+        cheapest: z.array(ImageQualityCandidateSchema).optional(),
+        balanced: z.array(ImageQualityCandidateSchema).optional(),
+        best: z.array(ImageQualityCandidateSchema).optional(),
+    }).optional(),
+});
+
 // ─── Full Pharos configuration ───
 export const PharosConfigSchema = z.object({
     server: ServerConfigSchema.default({}),
@@ -218,6 +262,10 @@ export const PharosConfigSchema = z.object({
     performanceLearning: PerformanceLearningSchema.default({}),
     tracking: TrackingConfigSchema.default({}),
     logging: LoggingConfigSchema.default({}),
+    embeddings: EmbeddingsConfigSchema.optional(),
+    tts: TTSConfigSchema.optional(),
+    stt: STTConfigSchema.optional(),
+    images: ImagesConfigSchema.optional(),
 });
 
 // ─── Type exports ───
