@@ -206,6 +206,24 @@ export const ImagesConfigSchema = z.object({
     }).optional(),
 });
 
+// ─── Videos configuration (Phase 4) ───
+// Same quality-tier shape as images, but pricing is per-second-of-output.
+// Async architecture: POST returns 202 + poll URL, GET returns status.
+export const VideoQualityCandidateSchema = z.object({
+    provider: z.enum(['fal', 'kling', 'kie']),
+    model: z.string(),
+    pricePerSecond: z.number().nonnegative(),
+});
+
+export const VideosConfigSchema = z.object({
+    enabled: z.boolean().default(true),
+    qualityTiers: z.object({
+        cheapest: z.array(VideoQualityCandidateSchema).optional(),
+        balanced: z.array(VideoQualityCandidateSchema).optional(),
+        best: z.array(VideoQualityCandidateSchema).optional(),
+    }).optional(),
+});
+
 // ─── Full Pharos configuration ───
 export const PharosConfigSchema = z.object({
     server: ServerConfigSchema.default({}),
@@ -266,6 +284,7 @@ export const PharosConfigSchema = z.object({
     tts: TTSConfigSchema.optional(),
     stt: STTConfigSchema.optional(),
     images: ImagesConfigSchema.optional(),
+    videos: VideosConfigSchema.optional(),
 });
 
 // ─── Type exports ───

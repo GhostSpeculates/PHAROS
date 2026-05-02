@@ -16,7 +16,8 @@ export type ModelCapability =
     | 'embedding'
     | 'tts'
     | 'stt'
-    | 'image';
+    | 'image'
+    | 'video';
 
 export type SpeedTier = 'fast' | 'medium' | 'slow';
 
@@ -431,6 +432,64 @@ export const MODEL_REGISTRY: ModelRegistryEntry[] = [
         capabilities: ['image'],
         pricing: { inputPerMillion: 40000.0, outputPerMillion: 0 },
         speed: 'medium',
+    },
+
+    // ─── Video (Phase 4 multi-modal) ───
+    // Pricing encoded as cost per 1,000,000 audio-seconds equivalent — pricePerSecond × 1e6.
+    // Route sets tokens_in = duration_seconds, so cost = duration × pricePerSecond collapses correctly.
+    {
+        id: 'fal-ai/kling-video/v1.6/standard/text-to-video',
+        provider: 'fal',
+        displayName: 'Kling v1.6 Standard via fal.ai (cheapest video tier)',
+        contextWindow: 0,
+        capabilities: ['video'],
+        pricing: { inputPerMillion: 29000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+    {
+        id: 'fal-ai/kling-video/v1.6/pro/text-to-video',
+        provider: 'fal',
+        displayName: 'Kling v1.6 Pro via fal.ai (balanced video tier)',
+        contextWindow: 0,
+        capabilities: ['video'],
+        pricing: { inputPerMillion: 58000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+    {
+        id: 'fal-ai/kling-video/v2-master/text-to-video',
+        provider: 'fal',
+        displayName: 'Kling v2 Master via fal.ai (best video tier)',
+        contextWindow: 0,
+        capabilities: ['video'],
+        pricing: { inputPerMillion: 160000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+    {
+        id: 'kling-v1.6-standard',
+        provider: 'kling',
+        displayName: 'Kling v1.6 Standard direct (PAYG)',
+        contextWindow: 0,
+        capabilities: ['video'],
+        pricing: { inputPerMillion: 29000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+    {
+        id: 'kling-v1.6-pro',
+        provider: 'kling',
+        displayName: 'Kling v1.6 Pro direct',
+        contextWindow: 0,
+        capabilities: ['video'],
+        pricing: { inputPerMillion: 58000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+    {
+        id: 'veo-3',
+        provider: 'kie',
+        displayName: 'Google Veo 3 via KIE AI',
+        contextWindow: 0,
+        capabilities: ['video'],
+        pricing: { inputPerMillion: 100000.0, outputPerMillion: 0 },
+        speed: 'slow',
     },
 ];
 

@@ -19,6 +19,9 @@ import { registerSTTRoutes } from './gateway/stt-routes.js';
 import { STTRouter } from './providers/stt.js';
 import { registerImagesRoutes } from './gateway/images-routes.js';
 import { ImagesRouter } from './providers/images.js';
+import { registerVideosRoutes } from './gateway/videos-routes.js';
+import { VideosRouter } from './providers/video.js';
+import { VideoJobStore } from './jobs/video-poller.js';
 import { createErrorHandler } from './gateway/middleware/error-handler.js';
 import { createLogger, type Logger } from './utils/logger.js';
 import { initPricing } from './tracking/cost-calculator.js';
@@ -165,6 +168,15 @@ export async function createServer(config: PharosConfig): Promise<{
         registerImagesRoutes(app, config, imagesRouter, tracker, logger);
     }
 
+    // ─── Videos (Phase 4 multi-modal — async with background poller) ───
+    let videoJobStore: VideoJobStore | null = null;
+    if (config.videos?.enabled !== false) {
+        const videosRouter = new VideosRouter(config, logger);
+        videoJobStore = new VideoJobStore(videosRouter, tracker, logger);
+        videoJobStore.start();
+        registerVideosRoutes(app, config, videosRouter, videoJobStore, tracker, logger);
+    }
+
     // Wave 5 — wallet routes (only if wallet store initialized)
     if (wallet) {
         registerWalletRoutes({ fastify: app, wallet, logger });
@@ -196,6 +208,8 @@ export async function createServer(config: PharosConfig): Promise<{
             logger.info(`   POST /v1/audio/speech          →  TTS routing endpoint`);
             logger.info(`   POST /v1/audio/transcriptions  →  STT transcription endpoint`);
             logger.info(`   POST /v1/images/generations    →  Image generation endpoint (quality-tier)`);
+            logger.info(`   POST /v1/videos/generations    →  Video gen submit (async, returns job ID)`);
+            logger.info(`   GET  /v1/videos/generations/:id → Video gen poll endpoint`);
             logger.info(`   GET  /v1/models                →  List models`);
             logger.info(`   GET  /v1/stats                 →  Cost & savings`);
             logger.info(`   GET  /health                   →  Health check`);
@@ -244,6 +258,9 @@ export async function createServer(config: PharosConfig): Promise<{
                     'Forceful shutdown after timeout',
                 );
             }
+
+            // Stop video poller before closing tracking DB (poller writes records on completion)
+            videoJobStore?.stop();
 
             // Now safe to close the tracking DB — no more requests in flight
             tracker?.close();
