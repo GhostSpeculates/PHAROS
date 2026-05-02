@@ -8,8 +8,12 @@ import { resolveCandidates, type QualityTier, type QualityCandidate } from '../r
 /**
  * Image generation modality.
  *
- * Three providers, three different request shapes:
- *  - fal.ai (primary aggregator): sync via fal.run/<model> for fast models,
+ * Four providers (Phase 4.5 — KIE added as PRIMARY per real production usage):
+ *  - KIE (primary): unified `/api/v1/jobs/createTask` endpoint covers nano-banana,
+ *    FLUX, Imagen, GPT-4o image, Midjourney, Seedream, etc. via the `model`
+ *    field. Auth: `Authorization: Bearer <api-key>`. Async; submits return
+ *    taskId, poll `/api/v1/jobs/recordInfo?taskId=...` until state=success.
+ *  - fal.ai (fallback aggregator): sync via fal.run/<model> for fast models,
  *    queue + poll via queue.fal.run/<model> for ultra. Auth: `Authorization: Key <api-key>`.
  *  - BFL (Black Forest Labs direct): always async, returns polling_url, poll until status=Ready.
  *    Auth: `x-key` header.
@@ -382,6 +386,116 @@ class OpenAIImageProvider extends ImageProvider {
     }
 }
 
+/**
+ * KIE provider — unified `/api/v1/jobs/createTask` + `/api/v1/jobs/recordInfo` pattern.
+ *
+ * Single adapter handles every KIE image model (google/nano-banana,
+ * flux/flux-1-1-pro, google/imagen-4, gpt4o-image, midjourney/v7,
+ * bytedance/seedream-3, etc.) by passing the model identifier.
+ *
+ * Verified live (Phase 4.5):
+ *   POST /api/v1/jobs/createTask  body: { model, input: { prompt, ... } }
+ *     → { code: 200, data: { taskId } }
+ *   GET  /api/v1/jobs/recordInfo?taskId=<id>
+ *     → { code: 200, data: { state: 'success'|'pending'|'failed',
+ *                             resultJson: '{"resultUrls":["..."]}',
+ *                             failMsg, failCode } }
+ *   data.resultJson is a stringified JSON; parse to extract resultUrls[0].
+ */
+class KIEImageProvider extends ImageProvider {
+    private apiKey: string | undefined;
+
+    constructor(opts: { apiKey: string | undefined; timeoutMs: number; logger: Logger }) {
+        super({ name: 'kie', apiKey: opts.apiKey, timeoutMs: opts.timeoutMs, logger: opts.logger });
+        this.apiKey = opts.apiKey;
+    }
+
+    async generate(model: string, req: ImageRequest): Promise<ImageGenerationResult> {
+        if (!this.apiKey) throw new Error('kie not configured');
+
+        const [width, height] = parseSize(req.size);
+        const input: Record<string, unknown> = {
+            prompt: req.prompt,
+            ...(req.n && req.n > 1 ? { num_images: req.n } : {}),
+            // Most KIE image models accept aspect_ratio or width/height; pass both for compatibility.
+            aspect_ratio: width === height ? '1:1' : width > height ? '16:9' : '9:16',
+            width,
+            height,
+            ...(req.seed !== undefined ? { seed: req.seed } : {}),
+        };
+
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), this.timeoutMs);
+
+        try {
+            // Submit
+            const submit = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model, input }),
+                signal: abort.signal,
+            });
+            if (!submit.ok) {
+                const text = await submit.text().catch(() => '<unreadable>');
+                throw new Error(`kie submit ${submit.status}: ${text.slice(0, 300)}`);
+            }
+            const submitJson = await submit.json() as { code?: number; data?: { taskId?: string } };
+            if (submitJson.code !== 200 || !submitJson.data?.taskId) {
+                throw new Error(`kie submit code=${submitJson.code}, no taskId`);
+            }
+            const taskId = submitJson.data.taskId;
+            const pollUrl = `https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`;
+
+            // Poll until success / failed / timeout
+            const start = Date.now();
+            while (Date.now() - start < POLL_TIMEOUT_MS) {
+                await sleep(POLL_INTERVAL_MS);
+                const poll = await fetch(pollUrl, {
+                    headers: { Authorization: `Bearer ${this.apiKey}` },
+                    signal: abort.signal,
+                });
+                if (!poll.ok) continue;
+                const pj = await poll.json() as {
+                    code?: number;
+                    data?: { state?: string; resultJson?: string; failMsg?: string; failCode?: number };
+                };
+                if (pj.code !== 200 || !pj.data) continue;
+                const data = pj.data;
+
+                if (data.state === 'success' && data.resultJson) {
+                    let result: { resultUrls?: string[] };
+                    try {
+                        result = JSON.parse(data.resultJson);
+                    } catch {
+                        throw new Error('kie: malformed resultJson on success');
+                    }
+                    const urls = result.resultUrls ?? [];
+                    if (urls.length === 0) throw new Error('kie: success with empty resultUrls');
+                    this.recordSuccess();
+                    return {
+                        images: urls.map((url) => ({ url })),
+                        model,
+                        count: urls.length,
+                    };
+                }
+                if (data.state === 'failed' || data.state === 'fail') {
+                    throw new Error(data.failMsg ?? `kie failure (code=${data.failCode ?? 'unknown'})`);
+                }
+                // 'pending' / 'queueing' / 'generating' — keep polling
+            }
+            throw new Error(`kie poll timed out after ${POLL_TIMEOUT_MS}ms`);
+        } catch (error) {
+            const msg = abort.signal.aborted
+                ? `kie request timed out after ${this.timeoutMs}ms`
+                : error instanceof Error ? error.message : 'unknown';
+            this.recordError(msg);
+            throw new Error(msg);
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+}
+
 function mapSizeToFal(size: string | undefined): string | undefined {
     if (!size) return 'square_hd';
     if (size === '1024x1024') return 'square_hd';
@@ -413,6 +527,7 @@ function extractFalImages(json: any): Array<{ url?: string; b64_json?: string }>
  * else fail over to next candidate.
  */
 export class ImagesRouter {
+    private kie: KIEImageProvider;
     private fal: FalImageProvider;
     private bfl: BFLImageProvider;
     private openai: OpenAIImageProvider;
@@ -425,10 +540,16 @@ export class ImagesRouter {
         this.logger = logger;
         this.enabled = (config as any).images?.enabled !== false;
 
+        const kieCfg = config.providers.kie;
         const falCfg = config.providers.fal;
         const bflCfg = config.providers.bfl;
         const openaiCfg = config.providers.openai;
 
+        this.kie = new KIEImageProvider({
+            apiKey: kieCfg ? process.env[kieCfg.apiKeyEnv] : undefined,
+            timeoutMs: kieCfg?.timeoutMs ?? 60_000,
+            logger,
+        });
         this.fal = new FalImageProvider({
             apiKey: falCfg ? process.env[falCfg.apiKeyEnv] : undefined,
             timeoutMs: falCfg?.timeoutMs ?? 60_000,
@@ -449,12 +570,12 @@ export class ImagesRouter {
             logger.info('Images: disabled');
             return;
         }
-        const ready = [this.fal, this.bfl, this.openai].filter((p) => p.available).length;
-        logger.info(`Images: ${ready}/3 providers ready (fal/bfl/openai)`);
+        const ready = [this.kie, this.fal, this.bfl, this.openai].filter((p) => p.available).length;
+        logger.info(`Images: ${ready}/4 providers ready (kie/fal/bfl/openai)`);
     }
 
     listProviders(): Array<{ name: string; available: boolean; healthy: boolean }> {
-        return [this.fal, this.bfl, this.openai].map((p) => ({
+        return [this.kie, this.fal, this.bfl, this.openai].map((p) => ({
             name: p.name,
             available: p.available,
             healthy: p.isHealthy(),
@@ -462,6 +583,7 @@ export class ImagesRouter {
     }
 
     private getProvider(name: string): ImageProvider | undefined {
+        if (name === 'kie') return this.kie;
         if (name === 'fal') return this.fal;
         if (name === 'bfl') return this.bfl;
         if (name === 'openai') return this.openai;

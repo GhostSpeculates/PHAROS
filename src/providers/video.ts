@@ -283,6 +283,20 @@ class KlingVideoProvider extends VideoProvider {
     }
 }
 
+/**
+ * KIE provider using the UNIFIED `/api/v1/jobs/createTask` endpoint (not the
+ * per-model endpoints). This single adapter supports every video model KIE
+ * exposes (Veo, Veo Fast, Sora 2, Kling, Wan, Hailuo, Seedance, etc.) by
+ * passing the model identifier in the request body.
+ *
+ * Submit: POST /api/v1/jobs/createTask  with { model, input: {...} }
+ *   -> { code: 200, data: { taskId } }
+ * Poll:   GET  /api/v1/jobs/recordInfo?taskId=...
+ *   -> { code: 200, data: { state: "success"|"pending"|"failed", resultJson, failMsg } }
+ *
+ * `data.resultJson` is a stringified JSON containing { resultUrls: [...] }.
+ * For video, resultUrls[0] is the video URL.
+ */
 class KIEVideoProvider extends VideoProvider {
     private apiKey: string | undefined;
 
@@ -294,19 +308,21 @@ class KIEVideoProvider extends VideoProvider {
     async submit(model: string, req: VideoSubmitRequest): Promise<UpstreamSubmitResult> {
         if (!this.apiKey) throw new Error('kie not configured');
 
-        const body: Record<string, unknown> = {
-            model,
+        // KIE accepts both `aspectRatio` and `aspect_ratio` for some models — use the camelCase
+        // form which is more universally supported.
+        const input: Record<string, unknown> = {
             prompt: req.prompt,
             duration: req.durationSeconds,
-            aspect_ratio: '16:9',
-            ...(req.imageUrl ? { image_url: req.imageUrl } : {}),
+            aspectRatio: '16:9',
+            ...(req.imageUrl ? { imageUrl: req.imageUrl } : {}),
+            ...(req.seed !== undefined ? { seed: req.seed } : {}),
         };
 
         try {
-            const resp = await fetch('https://api.kie.ai/api/v1/veo/generate', {
+            const resp = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+                body: JSON.stringify({ model, input }),
             });
             if (!resp.ok) {
                 const text = await resp.text().catch(() => '<unreadable>');
@@ -320,7 +336,7 @@ class KIEVideoProvider extends VideoProvider {
             const taskId = json.data.taskId;
             return {
                 upstreamId: taskId,
-                statusUrl: `https://api.kie.ai/api/v1/veo/record-info?taskId=${encodeURIComponent(taskId)}`,
+                statusUrl: `https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
             };
         } catch (error) {
             const msg = error instanceof Error ? error.message : 'unknown';
@@ -337,16 +353,23 @@ class KIEVideoProvider extends VideoProvider {
             if (!resp.ok) return { state: 'processing' };
             const json = await resp.json() as {
                 code?: number;
-                data?: { successFlag?: number; response?: { resultUrls?: string[] }; errorMsg?: string };
+                data?: { state?: string; resultJson?: string; failMsg?: string; failCode?: number };
             };
             if (json.code !== 200 || !json.data) return { state: 'processing' };
-            if (json.data.successFlag === 1) {
-                const url = json.data.response?.resultUrls?.[0];
-                if (!url) return { state: 'failed', error: 'kie: completed without resultUrls' };
-                return { state: 'completed', videoUrl: url };
+            const data = json.data;
+
+            if (data.state === 'success' && data.resultJson) {
+                try {
+                    const result = JSON.parse(data.resultJson) as { resultUrls?: string[] };
+                    const url = result.resultUrls?.[0];
+                    if (!url) return { state: 'failed', error: 'kie: success but no resultUrls' };
+                    return { state: 'completed', videoUrl: url };
+                } catch {
+                    return { state: 'failed', error: 'kie: malformed resultJson' };
+                }
             }
-            if (json.data.successFlag === 2 || json.data.successFlag === 3) {
-                return { state: 'failed', error: json.data.errorMsg ?? 'kie task failed' };
+            if (data.state === 'failed' || data.state === 'fail') {
+                return { state: 'failed', error: data.failMsg ?? `kie failure (code=${data.failCode ?? 'unknown'})` };
             }
             return { state: 'processing' };
         } catch (error) {

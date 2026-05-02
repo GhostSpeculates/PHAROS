@@ -434,6 +434,54 @@ export const MODEL_REGISTRY: ModelRegistryEntry[] = [
         speed: 'medium',
     },
 
+    // ─── KIE image models (Phase 4.5 — primary aggregator per real usage) ───
+    // Pricing in USD/image rough — KIE bills in credits (~$0.0058/credit at $50/8664-credit ratio).
+    {
+        id: 'google/nano-banana',
+        provider: 'kie',
+        displayName: 'Gemini 2.5 Flash Image via KIE (cheapest tier, ~6s)',
+        contextWindow: 0,
+        capabilities: ['image'],
+        pricing: { inputPerMillion: 23000.0, outputPerMillion: 0 },
+        speed: 'fast',
+    },
+    {
+        id: 'google/imagen-4',
+        provider: 'kie',
+        displayName: 'Google Imagen 4 via KIE (balanced tier)',
+        contextWindow: 0,
+        capabilities: ['image'],
+        pricing: { inputPerMillion: 40000.0, outputPerMillion: 0 },
+        speed: 'medium',
+    },
+    {
+        id: 'flux/flux-1-1-pro',
+        provider: 'kie',
+        displayName: 'FLUX 1.1 Pro via KIE (balanced tier)',
+        contextWindow: 0,
+        capabilities: ['image'],
+        pricing: { inputPerMillion: 40000.0, outputPerMillion: 0 },
+        speed: 'medium',
+    },
+    {
+        id: 'midjourney/v7',
+        provider: 'kie',
+        displayName: 'Midjourney v7 via KIE (best tier, photoreal)',
+        contextWindow: 0,
+        capabilities: ['image'],
+        pricing: { inputPerMillion: 80000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+    {
+        id: 'gpt4o-image',
+        provider: 'kie',
+        displayName: 'GPT-4o Image via KIE (best tier, prompt fidelity)',
+        contextWindow: 0,
+        capabilities: ['image'],
+        pricing: { inputPerMillion: 80000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+
     // ─── Video (Phase 4 multi-modal) ───
     // Pricing encoded as cost per 1,000,000 audio-seconds equivalent — pricePerSecond × 1e6.
     // Route sets tokens_in = duration_seconds, so cost = duration × pricePerSecond collapses correctly.
@@ -485,10 +533,47 @@ export const MODEL_REGISTRY: ModelRegistryEntry[] = [
     {
         id: 'veo-3',
         provider: 'kie',
-        displayName: 'Google Veo 3 via KIE AI',
+        displayName: 'Google Veo 3 via KIE AI (best tier)',
         contextWindow: 0,
         capabilities: ['video'],
         pricing: { inputPerMillion: 100000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+    // Phase 4.5 — additional KIE video models for cheapest + balanced tiers
+    {
+        id: 'veo3_fast',
+        provider: 'kie',
+        displayName: 'Google Veo 3 Fast via KIE (balanced, ~3x cheaper than Veo 3)',
+        contextWindow: 0,
+        capabilities: ['video'],
+        pricing: { inputPerMillion: 30000.0, outputPerMillion: 0 },
+        speed: 'medium',
+    },
+    {
+        id: 'kling/v1-6-standard',
+        provider: 'kie',
+        displayName: 'Kling v1.6 Standard via KIE (cheapest tier)',
+        contextWindow: 0,
+        capabilities: ['video'],
+        pricing: { inputPerMillion: 29000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+    {
+        id: 'kling/v1-6-pro',
+        provider: 'kie',
+        displayName: 'Kling v1.6 Pro via KIE (balanced)',
+        contextWindow: 0,
+        capabilities: ['video'],
+        pricing: { inputPerMillion: 58000.0, outputPerMillion: 0 },
+        speed: 'slow',
+    },
+    {
+        id: 'sora-2',
+        provider: 'kie',
+        displayName: 'Sora 2 via KIE (best tier, photoreal)',
+        contextWindow: 0,
+        capabilities: ['video'],
+        pricing: { inputPerMillion: 200000.0, outputPerMillion: 0 },
         speed: 'slow',
     },
 ];

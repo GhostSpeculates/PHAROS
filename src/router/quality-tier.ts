@@ -27,15 +27,23 @@ export interface QualityCandidate {
     pricePerImage: number;
 }
 
+// Phase 4.5: KIE first per real production usage (verified with 96-credit balance check).
+// Each tier falls through to fal.ai → BFL → OpenAI as resilience backstops.
 const DEFAULT_TIERS: Record<QualityTier, QualityCandidate[]> = {
     cheapest: [
+        // ~4 credits (~$0.023) — Gemini 2.5 Flash Image, ~6s generation
+        { provider: 'kie', model: 'google/nano-banana', pricePerImage: 0.023 },
         { provider: 'fal', model: 'fal-ai/flux/schnell', pricePerImage: 0.003 },
     ],
     balanced: [
+        { provider: 'kie', model: 'google/imagen-4', pricePerImage: 0.040 },
+        { provider: 'kie', model: 'flux/flux-1-1-pro', pricePerImage: 0.040 },
         { provider: 'fal', model: 'fal-ai/flux-pro/v1.1', pricePerImage: 0.040 },
         { provider: 'bfl', model: 'flux-pro-1.1', pricePerImage: 0.040 },
     ],
     best: [
+        { provider: 'kie', model: 'midjourney/v7', pricePerImage: 0.080 },
+        { provider: 'kie', model: 'gpt4o-image', pricePerImage: 0.080 },
         { provider: 'fal', model: 'fal-ai/flux-pro/v1.1-ultra', pricePerImage: 0.060 },
         { provider: 'bfl', model: 'flux-pro-1.1-ultra', pricePerImage: 0.060 },
     ],
