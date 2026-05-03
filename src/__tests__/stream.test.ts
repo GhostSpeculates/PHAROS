@@ -111,3 +111,19 @@ describe('initSSEHeaders', () => {
         });
     });
 });
+
+describe('sendSSEChunk with eventName', () => {
+    it('omits event line when eventName not provided (OpenAI shape)', () => {
+        const reply = makeMockReply();
+        sendSSEChunk(reply, { foo: 1 });
+        expect(reply.raw.write).toHaveBeenCalledWith('data: {"foo":1}\n\n');
+    });
+
+    it('includes event line when eventName provided (Anthropic shape)', () => {
+        const reply = makeMockReply();
+        sendSSEChunk(reply, { type: 'message_start' }, 'message_start');
+        expect(reply.raw.write).toHaveBeenCalledWith(
+            'event: message_start\ndata: {"type":"message_start"}\n\n',
+        );
+    });
+});

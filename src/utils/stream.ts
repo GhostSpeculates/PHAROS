@@ -9,12 +9,19 @@ export function isClientConnected(reply: FastifyReply): boolean {
 
 /**
  * Send a single SSE chunk to the client.
+ *
+ * If `eventName` is provided, the chunk includes an `event: <name>` line
+ * before the data line — required by Anthropic's Messages API streaming
+ * protocol. OpenAI streaming format omits the event name, so chat-path
+ * callers don't pass it.
+ *
  * Returns false if the write failed (client disconnected).
  */
-export function sendSSEChunk(reply: FastifyReply, data: object): boolean {
+export function sendSSEChunk(reply: FastifyReply, data: object, eventName?: string): boolean {
     if (!isClientConnected(reply)) return false;
     try {
-        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+        const prefix = eventName ? `event: ${eventName}\n` : '';
+        reply.raw.write(`${prefix}data: ${JSON.stringify(data)}\n\n`);
         return true;
     } catch {
         return false;
