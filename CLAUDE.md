@@ -284,9 +284,16 @@ src/
   - **Phase 2B**: ✅ Model registry — `src/registry/models.ts` with capabilities, pricing, speed metadata
   - **Phase 2C**: ✅ Task-type-aware routing — affinity system, virtual model names (pharos-code, pharos-math, etc.)
   - **Phase 2D**: ✅ Conversation tracking + prompt caching — tier floor prevents quality drops, Anthropic cache hints
+  - **Phase 2E**: ✅ Anthropic-shape `/v1/messages` endpoint — Claude Agent SDK compatibility (May 2, 2026)
   - Performance learning + auto-tuned routing weights
+- **Phase 2.5 (SaaS Launch Blockers)**: 🚨 P0 — required before public SaaS launch
+  - **Streaming + tool_use parity** — `ChatStreamChunk` currently only carries `content: string`; needs to surface `tool_calls` from each provider so the existing `AnthropicStreamTranslator` (which already supports tool_use events) gets fed properly. Every modern agent framework (Claude SDK, OpenAI Agents SDK, OpenClaw, Lindy) defaults to streaming, so without this Pharos breaks all of them for the most common pattern (agents using tools). Documented as known limitation in `src/translation/anthropic-stream.ts` and `src/gateway/messages-routes.ts` — promote to fix before launch.
+  - Wave 5 wallet completion (Stripe checkout + Resend welcome email — currently WIP in stash)
 - **Phase 3 (Dashboard)**: NOT STARTED — web UI, model registry browser, routing visualization
 - **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker Hub, docs site, community registry
+
+### Strategic positioning (per Ghost, May 2, 2026)
+Pharos is going SaaS as a **runtime-agnostic multi-modal power-up**. Drop-in inference router that works with any agent framework (Claude SDK, OpenAI Agents SDK, OpenClaw, Lindy, future), saves 70-90% on costs, handles all modalities. The "fits all" principle from the universal-compatibility memory operationalizes here.
 
 ## Production Stats
 
