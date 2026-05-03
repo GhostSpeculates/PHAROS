@@ -22,6 +22,7 @@ import { createAuthMiddleware } from './middleware/auth.js';
 import { createAgentRateLimiter } from './middleware/agent-rate-limit.js';
 import { estimateTokens, getContextWindow, isContextSizeError } from '../utils/context.js';
 import { isTransientError, calculateBackoffMs, sleep } from '../utils/retry.js';
+import { sendAlert } from '../utils/alerts.js';
 import { isMemoryFlush } from '../utils/flush-detector.js';
 import { applyAgentProfile } from '../router/agent-profile.js';
 import { applyTierFloor } from '../router/conversation-tracker.js';
@@ -106,6 +107,63 @@ export function registerMessagesRoutes(
                         'rate_limit_error',
                     ));
                 return;
+            }
+        }
+
+        // Spending limits — same logic as chat path
+        if (tracker) {
+            const { dailyLimit, monthlyLimit } = config.spending;
+            if (dailyLimit !== null) {
+                const dailySpend = tracker.getDailySpend();
+                if (dailySpend >= dailyLimit) {
+                    sendAlert(
+                        'Daily spending limit reached',
+                        `Spent $${dailySpend.toFixed(4)} / $${dailyLimit.toFixed(2)} daily limit`,
+                        'critical',
+                        'spending-daily-100',
+                    );
+                    reply.status(429).send(
+                        buildErrorResponse(
+                            `Daily spending limit ($${dailyLimit.toFixed(2)}) reached. Current: $${dailySpend.toFixed(4)}`,
+                            'rate_limit_error',
+                        ),
+                    );
+                    return;
+                }
+                if (dailySpend >= dailyLimit * 0.8) {
+                    sendAlert(
+                        'Daily spending at 80%',
+                        `$${dailySpend.toFixed(4)} / $${dailyLimit.toFixed(2)} (${((dailySpend / dailyLimit) * 100).toFixed(1)}%)`,
+                        'warning',
+                        'spending-daily-80',
+                    );
+                }
+            }
+            if (monthlyLimit !== null) {
+                const monthlySpend = tracker.getMonthlySpend();
+                if (monthlySpend >= monthlyLimit) {
+                    sendAlert(
+                        'Monthly spending limit reached',
+                        `Spent $${monthlySpend.toFixed(4)} / $${monthlyLimit.toFixed(2)} monthly limit`,
+                        'critical',
+                        'spending-monthly-100',
+                    );
+                    reply.status(429).send(
+                        buildErrorResponse(
+                            `Monthly spending limit ($${monthlyLimit.toFixed(2)}) reached. Current: $${monthlySpend.toFixed(4)}`,
+                            'rate_limit_error',
+                        ),
+                    );
+                    return;
+                }
+                if (monthlySpend >= monthlyLimit * 0.8) {
+                    sendAlert(
+                        'Monthly spending at 80%',
+                        `$${monthlySpend.toFixed(4)} / $${monthlyLimit.toFixed(2)} (${((monthlySpend / monthlyLimit) * 100).toFixed(1)}%)`,
+                        'warning',
+                        'spending-monthly-80',
+                    );
+                }
             }
         }
 
@@ -261,6 +319,10 @@ export function registerMessagesRoutes(
                                 }
                             }
 
+                            // Anthropic protocol doesn't use [DONE], but we still must
+                            // end the socket — otherwise the Agent SDK client hangs.
+                            reply.raw.end();
+
                             // Latency + tracking
                             const providerLatency = Date.now() - requestStartTime - (classification.latencyMs ?? 0);
                             p.recordLatency(Math.max(0, providerLatency));
@@ -328,11 +390,11 @@ export function registerMessagesRoutes(
                         } catch (streamError) {
                             if (reply.raw.headersSent) {
                                 logger.error({ requestId, error: errMsg(streamError) }, 'Stream error mid-response');
+                                reply.raw.end();  // close hanging socket
                                 return;
                             }
                             const eMsg = errMsg(streamError);
-                            const p = registry.get(candidate.provider);
-                            if (isContextSizeError(eMsg) && p) p.undoLastError();
+                            if (isContextSizeError(eMsg)) p.undoLastError();
                             if (attempt === 0 && isTransientError(streamError)) {
                                 await sleep(calculateBackoffMs(0));
                                 continue;
@@ -473,6 +535,24 @@ export function registerMessagesRoutes(
         } catch (error) {
             const eMsg = errMsg(error);
             logger.error({ requestId, error: eMsg }, '✗ Request failed');
+
+            // Track the failed request if we have enough context
+            if (classification && routing) {
+                recordRequest(
+                    tracker,
+                    config,
+                    requestId,
+                    routing,
+                    classification,
+                    { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+                    Date.now() - requestStartTime,
+                    parseResult.success ? parseResult.data.stream : false,
+                    getMessagePreview(anthropicBody),
+                    { status: 'error', errorMessage: eMsg },
+                    { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount: 0 },
+                );
+            }
+
             if (!reply.raw.headersSent) {
                 reply.status(502).send(buildErrorResponse(`Routing failed: ${eMsg}`, 'server_error', 'provider_error'));
             }
