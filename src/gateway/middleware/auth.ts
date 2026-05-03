@@ -45,32 +45,40 @@ export function createAuthMiddleware(
             return;
         }
 
+        // Accept either:
+        //   Authorization: Bearer <key>   (OpenAI-compat clients, Pharos default)
+        //   X-Api-Key: <key>              (Anthropic SDK native — used by /v1/messages)
         const authHeader = request.headers.authorization;
+        const xApiKeyHeader = request.headers['x-api-key'];
 
-        if (!authHeader) {
+        let token: string | undefined;
+
+        if (xApiKeyHeader && typeof xApiKeyHeader === 'string' && xApiKeyHeader.trim()) {
+            // Anthropic SDK path — x-api-key header
+            token = xApiKeyHeader.trim();
+        } else if (authHeader) {
+            const match = authHeader.match(/^Bearer\s+(\S+)$/);
+            if (!match) {
+                reply.status(401).send(
+                    buildErrorResponse(
+                        'Malformed Authorization header. Use: Authorization: Bearer <your-pharos-key>',
+                        'authentication_error',
+                        'invalid_api_key',
+                    ),
+                );
+                return reply;
+            }
+            token = match[1];
+        } else {
             reply.status(401).send(
                 buildErrorResponse(
-                    'Missing Authorization header. Use: Authorization: Bearer <your-pharos-key>',
+                    'Missing auth. Use Authorization: Bearer <key> or X-Api-Key: <key>',
                     'authentication_error',
                     'missing_api_key',
                 ),
             );
             return reply;
         }
-
-        const match = authHeader.match(/^Bearer\s+(\S+)$/);
-        if (!match) {
-            reply.status(401).send(
-                buildErrorResponse(
-                    'Malformed Authorization header. Use: Authorization: Bearer <your-pharos-key>',
-                    'authentication_error',
-                    'invalid_api_key',
-                ),
-            );
-            return reply;
-        }
-
-        const token = match[1];
 
         // ─── Operator/admin key bypass ───────────────────────────────────
         // Operator keys skip wallet entirely — used for /v1/stats, dashboard,
