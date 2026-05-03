@@ -9,6 +9,7 @@ import { ProviderRegistry } from './providers/index.js';
 import { TrackingStore } from './tracking/store.js';
 import { WalletStore } from './tracking/wallet-store.js';
 import { registerRoutes } from './gateway/router.js';
+import { registerMessagesRoutes } from './gateway/messages-routes.js';
 import { registerWalletRoutes } from './gateway/wallet-routes.js';
 import { registerFilterRoutes } from './gateway/filter-routes.js';
 import { registerEmbeddingsRoutes } from './gateway/embeddings-routes.js';
@@ -152,6 +153,10 @@ export async function createServer(config: PharosConfig): Promise<{
     // Register routes
     registerRoutes(app, config, classifier, router, registry, tracker, logger, conversationTracker, learningStore, phase2Metrics, wallet);
 
+    // Anthropic-shape /v1/messages — Claude Agent SDK entry point.
+    // Same pipeline as /v1/chat/completions, translates at edges.
+    registerMessagesRoutes(app, config, classifier, router, registry, tracker, logger, conversationTracker, learningStore, phase2Metrics, wallet);
+
     // ─── Embeddings (Phase 1 multi-modal) ───
     if (config.embeddings?.enabled !== false) {
         const embeddingsRouter = new EmbeddingsRouter(config, logger);
@@ -212,6 +217,7 @@ export async function createServer(config: PharosConfig): Promise<{
             logger.info('────────────────────────────────────────────');
             logger.info(`🚀 Pharos is live on http://localhost:${config.server.port}`);
             logger.info(`   POST /v1/chat/completions      →  Chat routing endpoint`);
+            logger.info(`   POST /v1/messages              →  Anthropic-shape entry (Agent SDK)`);
             logger.info(`   POST /v1/embeddings            →  Embeddings routing endpoint`);
             logger.info(`   POST /v1/audio/speech          →  TTS routing endpoint`);
             logger.info(`   POST /v1/audio/transcriptions  →  STT transcription endpoint`);
