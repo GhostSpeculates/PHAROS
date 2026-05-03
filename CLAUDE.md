@@ -62,6 +62,7 @@ All use the OpenAI-compatible adapter (`src/providers/openai-compat.ts`) except 
 
 - `GET /` — Live HTML dashboard (auto-refresh 30s)
 - `POST /v1/chat/completions` — Main routing endpoint (OpenAI-compatible)
+- `POST /v1/messages` — Anthropic-shape entry point (Claude Agent SDK)
 - `GET /v1/models` — List available models
 - `GET /v1/stats` — Cost tracking and savings JSON
 - `GET /v1/stats/recent` — Last 25 requests JSON

@@ -281,6 +281,12 @@ export function registerMessagesRoutes(
                             });
                             let finalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
+                            // Known limitation: ChatStreamChunk (src/providers/types.ts) only
+                            // carries `content: string`; tool_calls aren't surfaced through the
+                            // streaming interface. Streaming `/v1/messages` calls that result in
+                            // tool use will produce a valid event sequence with zero tool_use
+                            // content blocks. Address when the first customer needs streaming
+                            // tool calls — non-streaming tool_use already works.
                             for await (const chunk of p.chatStream(streamReq)) {
                                 if (clientDisconnected || !isClientConnected(reply)) return;
 
