@@ -571,6 +571,11 @@ ${recentRows}
                 ...(body.presence_penalty !== undefined && { presencePenalty: body.presence_penalty }),
                 ...(body.frequency_penalty !== undefined && { frequencyPenalty: body.frequency_penalty }),
                 ...(body.thinking !== undefined && { thinking: body.thinking }),
+                // Phase 2.5 Tier 2: tools + tool_choice flow through to providers.
+                // openai-compat adapter passes them to upstream; native Anthropic/Google
+                // adapters still need translator wiring (Tiers 3-4).
+                ...(body.tools && body.tools.length > 0 && { tools: body.tools }),
+                ...(body.tool_choice !== undefined && { toolChoice: body.tool_choice }),
             };
 
             // 4a. Enhance prompt for cheap models (free/economical)
@@ -693,11 +698,15 @@ ${recentRows}
                                     headersSent = true;
                                 }
 
-                                if (chunk.content) {
+                                // Phase 2.5 Tier 2: emit chunk when content OR tool_calls present.
+                                const hasContent = !!chunk.content;
+                                const hasToolCalls = !!(chunk.toolCalls && chunk.toolCalls.length > 0);
+                                if (hasContent || hasToolCalls) {
                                     if (!sendSSEChunk(reply, buildStreamChunk({
                                         id: completionId,
                                         model: candidate.model,
                                         content: chunk.content,
+                                        ...(hasToolCalls && { toolCalls: chunk.toolCalls }),
                                     }))) {
                                         logger.info({ requestId }, 'Client disconnected (write failed), aborting stream');
                                         return;
@@ -983,6 +992,7 @@ ${recentRows}
                 content: response.content,
                 finishReason: response.finishReason,
                 usage: response.usage,
+                ...(response.toolCalls && response.toolCalls.length > 0 && { toolCalls: response.toolCalls }),
             });
         } catch (error) {
             const errMsg = error instanceof Error ? error.message : 'Unknown error';

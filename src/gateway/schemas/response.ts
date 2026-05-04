@@ -1,4 +1,4 @@
-import type { TokenUsage } from '../../providers/types.js';
+import type { TokenUsage, ToolCall } from '../../providers/types.js';
 
 /**
  * Build an OpenAI-compatible chat completion response.
@@ -9,7 +9,22 @@ export function buildChatCompletionResponse(opts: {
     content: string;
     finishReason: string;
     usage: TokenUsage;
+    toolCalls?: ToolCall[];
 }): object {
+    const message: Record<string, unknown> = {
+        role: 'assistant',
+        content: opts.content,
+    };
+    if (opts.toolCalls && opts.toolCalls.length > 0) {
+        message.tool_calls = opts.toolCalls.map((tc) => ({
+            id: tc.id ?? '',
+            type: 'function' as const,
+            function: {
+                name: tc.function?.name ?? '',
+                arguments: tc.function?.arguments ?? '{}',
+            },
+        }));
+    }
     return {
         id: opts.id,
         object: 'chat.completion',
@@ -18,10 +33,7 @@ export function buildChatCompletionResponse(opts: {
         choices: [
             {
                 index: 0,
-                message: {
-                    role: 'assistant',
-                    content: opts.content,
-                },
+                message,
                 finish_reason: opts.finishReason,
             },
         ],
@@ -41,7 +53,18 @@ export function buildStreamChunk(opts: {
     model: string;
     content: string;
     finishReason?: string;
+    toolCalls?: ToolCall[];
 }): object {
+    const delta: Record<string, unknown> = {};
+    if (opts.content) delta.content = opts.content;
+    if (opts.toolCalls && opts.toolCalls.length > 0) {
+        delta.tool_calls = opts.toolCalls.map((tc, i) => ({
+            index: tc.index ?? i,
+            ...(tc.id !== undefined && { id: tc.id }),
+            ...(tc.type !== undefined && { type: tc.type }),
+            ...(tc.function && { function: tc.function }),
+        }));
+    }
     return {
         id: opts.id,
         object: 'chat.completion.chunk',
@@ -50,7 +73,7 @@ export function buildStreamChunk(opts: {
         choices: [
             {
                 index: 0,
-                delta: opts.content ? { content: opts.content } : {},
+                delta,
                 finish_reason: opts.finishReason ?? null,
             },
         ],

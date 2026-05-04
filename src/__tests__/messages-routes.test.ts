@@ -199,7 +199,7 @@ describe('POST /v1/messages — tool use (Phase 2.5)', () => {
         } as unknown as ModelRouter;
 
         const stubProvider = {
-            chat: vi.fn(async () => ({
+            chat: vi.fn(async (_req: any) => ({
                 content: opts.nonStreamingToolCalls ? '' : 'no-tools-here',
                 model: 'stub-model',
                 usage: { promptTokens: 12, completionTokens: 4, totalTokens: 16 },
