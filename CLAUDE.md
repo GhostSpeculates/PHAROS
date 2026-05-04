@@ -52,9 +52,9 @@ Backward-compatible with legacy single `provider`/`model` format.
 - **Premium** (score 7-8): Claude Sonnet, GPT-4o
 - **Frontier** (score 9-10): Claude Opus, Claude Sonnet (fallback), GPT-4o
 
-### Providers (11 active — 10 cloud + 1 local)
+### Providers (10 cloud)
 
-Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot, Together AI, Fireworks AI, Ollama (local)
+Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot, Together AI, Fireworks AI
 
 All use the OpenAI-compatible adapter (`src/providers/openai-compat.ts`) except Anthropic (`anthropic.ts`) and Google (`google.ts`) which have native adapters.
 
@@ -121,15 +121,6 @@ npm run format     # Prettier
 ### VPS — DECOMMISSIONED
 - Historical VPS data preserved at `~/pharos/data/pharos-vps-archive.db` on Mac Mini
 - Legacy deploy scripts in `scripts/` are VPS-only — do not use
-
-### Providers (11 active on Mac Mini)
-Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot, Together AI, Fireworks AI, Ollama (local)
-
-### Ollama (Local — $0 routing)
-- **Models**: qwen2.5:14b (8GB), kimi-k2.5:cloud
-- **Endpoint**: http://localhost:11434
-- Pharos routes score 1-3 queries to Ollama for free local inference
-- All 8 OpenClaw workers use `ollama/qwen2.5:14b` as primary model
 
 ## Code Conventions
 
@@ -260,25 +251,7 @@ src/
 
 ## Roadmap Status
 
-- **Phase 1 (Core Engine)**: ✅ COMPLETE — declared by Ghost on Feb 25, 2026
-  - 982 tests, 73.4% cost savings, 0% error rate, stress tested 35/35, 10 providers
-  - Routing, classification, multi-provider (10), failover, tracking, security, 982 tests
-  - Classifier: concurrency semaphore (max 5), LRU cache (30s TTL), 429 fast failover, metrics
-  - Classifier failover chain (Moonshot/kimi-latest → Groq → xAI → static fallback/economical)
-  - Frontier prompt tightened: 99% of tasks score 1-8, explicit "NOT 9-10" examples
-  - Discord alerts + ntfy.sh phone push (critical only) + startup self-test
-  - Error tracking in SQLite (status + error_message columns)
-  - Configurable: rate limit, body limit, retention days, oversized threshold, self-test, classifier concurrency
-  - Request ID: UUID v4 (crypto.randomUUID()), X-Request-Id client correlation
-  - Per-agent rate limiting: sliding window counter, configurable per-minute limit
-  - Spending limits: daily/monthly caps with alerts at 80% and 100%
-  - Retry with backoff: transient errors (429/502/503) retried once before failover
-  - Debug logging: opt-in, first 500 chars of input/output stored in SQLite
-  - CORS defaults to localhost dev ports (not wide open)
-  - Google multimodal fix (array content handling)
-  - Moonshot: international platform (api.moonshot.ai), model kimi-latest
-  - Stress test script: `scripts/stress-test.sh` (35 requests, 3 phases, burst + mixed load)
-  - Dockerfile + docker-compose.yml (multi-stage build, non-root, healthcheck, 512MB limit)
+- **Phase 1 (Core Engine)**: ✅ COMPLETE (Feb 25, 2026) — full feature inventory in `PRODUCT.md` and git history. Headlines: 982 tests, 73.4% savings, 0% error rate, classifier failover chain, per-agent rate limits, spending caps, retry-with-backoff, Docker.
 - **Phase 2 (Universal Intelligent Router)**: IN PROGRESS — see PRODUCT.md for full blueprint
   - **Phase 2A**: ✅ Provider expansion — Together AI + Fireworks AI (5 new models)
   - **Phase 2B**: ✅ Model registry — `src/registry/models.ts` with capabilities, pricing, speed metadata
@@ -303,12 +276,10 @@ Pharos is going SaaS as a **runtime-agnostic multi-modal power-up**. Drop-in inf
 - **Active agents**: registered in `agents:` block of `pharos.yaml` — marketing-agent, openclaw, noir-prime, sentinel, quant, lens, prospector + `_default` floor (economical)
 - **Note**: prior "15 agents in production" claim was aspirational; actual ongoing traffic comes primarily from NOIR scripts and the marketing agent. Once OpenClaw is reinstalled, expect that fleet to ramp up.
 - Noir (orchestrator) routes via `pharos-auto:noir-prime` with `minTier: premium` agent profile guard (ensures premium+ for reliable tool_use delegation)
-- Local Ollama handles score 1-3 queries at $0
+- Gemini 2.5 Flash handles free tier (score 1-3) — Ollama decommissioned May 2026
 - Gemini 2.5 Flash across all fallback chains
 - max_tokens capped at 1536 across all models (cost protection)
 - Discord alerts + ntfy.sh phone notifications live
 
-### Historical (VPS — Feb 25, 2026)
-- 201 requests processed, **73.4% savings** vs Sonnet baseline ($1.93 actual vs $7.24 baseline)
-- Stress tested: 35/35 requests under burst load, 0 failures
-- Historical data preserved in `~/pharos/data/pharos-vps-archive.db`
+### Historical (VPS — decommissioned Feb 25, 2026)
+Archived in `~/pharos/data/pharos-vps-archive.db` — 201 requests, 73.4% savings, 35/35 stress test pass.

@@ -15,3 +15,5 @@ pharos.yaml
 # Cross-session handoff files (transient)
 SESSION-HANDOFF.md
 AGENT-*-HANDOFF.md
+# Local Claude Code state (skills, settings) — not project code
+.claude/skills/
