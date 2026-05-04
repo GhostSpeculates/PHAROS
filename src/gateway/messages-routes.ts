@@ -237,6 +237,11 @@ export function registerMessagesRoutes(
                 stream: openAIBody.stream,
                 stop: openAIBody.stop,
                 ...(openAIBody.thinking !== undefined && { thinking: openAIBody.thinking }),
+                // Phase 2.5: tools + tool_choice flow through to providers.
+                // Translator built openAIBody.tools / tool_choice from Anthropic shape;
+                // openai-compat adapter now passes them to upstream providers.
+                ...(openAIBody.tools && openAIBody.tools.length > 0 && { tools: openAIBody.tools }),
+                ...(openAIBody.tool_choice !== undefined && { toolChoice: openAIBody.tool_choice }),
             };
 
             const candidates = directModel
@@ -301,16 +306,29 @@ export function registerMessagesRoutes(
                                     headersSent = true;
                                 }
 
-                                // Translate this OpenAI chunk into Anthropic events
+                                // Translate this OpenAI chunk into Anthropic events.
+                                // Phase 2.5: tool_calls now ride along — AnthropicStreamTranslator
+                                // emits content_block_start (tool_use) + input_json_delta events.
+                                const hasContent = !!chunk.content;
+                                const hasToolCalls = !!(chunk.toolCalls && chunk.toolCalls.length > 0);
+                                // Stream translator expects index-bearing tool_calls (OpenAI streaming
+                                // contract guarantees index per chunk). Default to 0 if a provider
+                                // ever omits it — degenerate but safer than crashing.
+                                const normalizedToolCalls = hasToolCalls
+                                    ? chunk.toolCalls!.map((tc, i) => ({ ...tc, index: tc.index ?? i }))
+                                    : undefined;
                                 const openaiChunk = {
                                     choices: [
                                         {
-                                            delta: chunk.content ? { content: chunk.content } : {},
+                                            delta: {
+                                                ...(hasContent ? { content: chunk.content } : {}),
+                                                ...(normalizedToolCalls ? { tool_calls: normalizedToolCalls } : {}),
+                                            },
                                             ...(chunk.finishReason ? { finish_reason: chunk.finishReason } : {}),
                                         },
                                     ],
                                 };
-                                if (chunk.content) {
+                                if (hasContent || hasToolCalls) {
                                     const events = streamTranslator.handleDelta(openaiChunk);
                                     for (const ev of events) {
                                         sendSSEChunk(reply, ev, ev.type);
@@ -506,7 +524,9 @@ export function registerMessagesRoutes(
             );
 
             // Translate response to Anthropic shape
-            // openAIToAnthropic expects OpenAI snake_case usage fields
+            // openAIToAnthropic expects OpenAI snake_case usage fields.
+            // Phase 2.5: response.toolCalls (if present) flow through to the
+            // translator, which emits Anthropic-shape `tool_use` content blocks.
             const anthropicResponse = openAIToAnthropic(
                 {
                     id: requestId,
@@ -516,6 +536,18 @@ export function registerMessagesRoutes(
                             message: {
                                 role: 'assistant',
                                 content: response.content,
+                                ...(response.toolCalls && response.toolCalls.length > 0
+                                    ? {
+                                          tool_calls: response.toolCalls.map((tc) => ({
+                                              id: tc.id ?? '',
+                                              type: 'function' as const,
+                                              function: {
+                                                  name: tc.function?.name ?? '',
+                                                  arguments: tc.function?.arguments ?? '{}',
+                                              },
+                                          })),
+                                      }
+                                    : {}),
                             },
                             finish_reason: response.finishReason,
                         },

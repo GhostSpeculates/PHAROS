@@ -50,6 +50,8 @@ export class OpenAICompatProvider extends LLMProvider {
                     ...(request.stop ? { stop: request.stop } : {}),
                     ...(request.presencePenalty !== undefined ? { presence_penalty: request.presencePenalty } : {}),
                     ...(request.frequencyPenalty !== undefined ? { frequency_penalty: request.frequencyPenalty } : {}),
+                    ...(request.tools && request.tools.length > 0 ? { tools: request.tools as any } : {}),
+                    ...(request.toolChoice !== undefined ? { tool_choice: request.toolChoice as any } : {}),
                     stream: false,
                 },
                 { signal: abort.signal },
@@ -57,15 +59,20 @@ export class OpenAICompatProvider extends LLMProvider {
 
             this.recordSuccess();
 
+            const choice = response.choices[0];
+            const message = choice?.message;
+            const toolCalls = (message as any)?.tool_calls as ChatResponse['toolCalls'] | undefined;
+
             return {
-                content: response.choices[0]?.message?.content ?? '',
+                content: message?.content ?? '',
                 model: response.model,
                 usage: {
                     promptTokens: response.usage?.prompt_tokens ?? 0,
                     completionTokens: response.usage?.completion_tokens ?? 0,
                     totalTokens: response.usage?.total_tokens ?? 0,
                 },
-                finishReason: response.choices[0]?.finish_reason ?? 'stop',
+                finishReason: choice?.finish_reason ?? 'stop',
+                ...(toolCalls && toolCalls.length > 0 ? { toolCalls } : {}),
             };
         } catch (error) {
             if (abort.signal.aborted) {
@@ -99,6 +106,8 @@ export class OpenAICompatProvider extends LLMProvider {
                     ...(request.stop ? { stop: request.stop } : {}),
                     ...(request.presencePenalty !== undefined ? { presence_penalty: request.presencePenalty } : {}),
                     ...(request.frequencyPenalty !== undefined ? { frequency_penalty: request.frequencyPenalty } : {}),
+                    ...(request.tools && request.tools.length > 0 ? { tools: request.tools as any } : {}),
+                    ...(request.toolChoice !== undefined ? { tool_choice: request.toolChoice as any } : {}),
                     stream: true,
                     stream_options: { include_usage: true },
                 },
@@ -110,9 +119,16 @@ export class OpenAICompatProvider extends LLMProvider {
             for await (const chunk of stream) {
                 const delta = chunk.choices[0]?.delta;
                 const content = delta?.content ?? '';
+                const toolCalls = (delta as any)?.tool_calls as ChatStreamChunk['toolCalls'] | undefined;
 
-                if (content) {
-                    yield { content };
+                // Yield text and tool-call fragments. Same chunk can carry both —
+                // assistant might emit a final text snippet + start a tool call
+                // in the same delta. We surface whatever's present.
+                if (content || (toolCalls && toolCalls.length > 0)) {
+                    yield {
+                        content,
+                        ...(toolCalls && toolCalls.length > 0 ? { toolCalls } : {}),
+                    };
                 }
 
                 // Usage comes in the final chunk
