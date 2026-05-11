@@ -37,8 +37,6 @@ classifier:
       model: kimi-latest
     - provider: groq
       model: llama-3.3-70b-versatile
-    - provider: xai
-      model: grok-3-mini-fast
   # Fallback tier if ALL classifier providers fail
   # "economical" is safest: under-classify (cheap) rather than over-classify (expensive)
   fallbackTier: economical
@@ -83,8 +81,6 @@ tiers:
         model: gpt-4o
       - provider: mistral
         model: mistral-large-latest
-      - provider: xai
-        model: grok-3-mini-fast
 
   premium:
     scoreRange: [7, 8]
@@ -138,11 +134,6 @@ providers:
   mistral:
     apiKeyEnv: MISTRAL_API_KEY
     baseUrl: https://api.mistral.ai/v1
-    timeoutMs: 30000
-    healthCooldownMs: 60000
-  xai:
-    apiKeyEnv: XAI_API_KEY
-    baseUrl: https://api.x.ai/v1
     timeoutMs: 30000
     healthCooldownMs: 60000
   moonshot:
