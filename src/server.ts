@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
+import rawBody from 'fastify-raw-body';
 import type { PharosConfig } from './config/schema.js';
 import { QueryClassifier } from './classifier/index.js';
 import { ModelRouter } from './router/index.js';
@@ -138,6 +139,15 @@ export async function createServer(config: PharosConfig): Promise<{
             files: 1,
             fields: 10,
         },
+    });
+
+    // Raw body — needed for Stripe webhook signature verification (Wave 1 Day 2).
+    // Scoped per-route via {config: {rawBody: true}}; other routes are unaffected.
+    await app.register(rawBody, {
+        field: 'rawBody',
+        global: false,
+        encoding: 'utf8',
+        runFirst: true,
     });
 
     // Register error handler
