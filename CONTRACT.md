@@ -108,6 +108,27 @@ Backend does NOT serve these. Backend wallet-routes only owns API + webhook.
 | `PHAROS_PUBLIC_URL` | `https://pharos.nexlabs.pro` | Used for Stripe success/cancel + balance link in welcome email |
 | `PHAROS_API_URL` | `https://pharos-nexlabs.fly.dev` | Used for `curl` examples in welcome email |
 | `PHAROS_CORS_ORIGINS` | `https://pharos.nexlabs.pro` | Allow landing to call API from browser |
+| `SENTRY_DSN` | `https://...@o....ingest.us.sentry.io/...` | Runtime error capture. Empty = Sentry no-op. |
+| `SENTRY_ENVIRONMENT` | `production` | Defaults to `NODE_ENV` if unset. |
+| `SENTRY_RELEASE` | `pharos@0.1.0+sha` | Optional. Match what `npm run sourcemaps:upload` tags. |
+
+**Source-map upload (one-time setup + per-deploy):**
+
+```bash
+# One-time setup on your local machine
+curl https://cli.sentry.dev/install -fsS | bash
+sentry-cli login   # opens browser
+
+# Export the auth token (or store in .env, NOT committed)
+export SENTRY_AUTH_TOKEN=...
+export SENTRY_ORG=nex-labs
+export SENTRY_PROJECT=pharos
+
+# Every deploy
+npm run deploy   # = npm run build && sourcemaps:upload && fly deploy
+```
+
+`tsc` output is deterministic, so locally-built source maps match what Fly's builder produces.
 
 ### Landing (`/Users/ghostfx/NEX-LABS/Pharos/.env`)
 

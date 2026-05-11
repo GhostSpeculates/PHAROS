@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import rawBody from 'fastify-raw-body';
+import * as Sentry from '@sentry/node';
 import type { PharosConfig } from './config/schema.js';
 import { QueryClassifier } from './classifier/index.js';
 import { ModelRouter } from './router/index.js';
@@ -149,6 +150,10 @@ export async function createServer(config: PharosConfig): Promise<{
         encoding: 'utf8',
         runFirst: true,
     });
+
+    // Sentry Fastify integration — registered BEFORE routes per Sentry docs.
+    // No-op when SENTRY_DSN is unset (init in instrument.ts is a no-op too).
+    Sentry.setupFastifyErrorHandler(app);
 
     // Register error handler
     app.setErrorHandler(createErrorHandler(logger));
