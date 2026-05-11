@@ -22,6 +22,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { generateUserApiKey } from '../utils/id.js';
 import type { Logger } from '../utils/logger.js';
 
 export type TxnType = 'topup' | 'debit' | 'refund' | 'adjust';
@@ -39,6 +40,7 @@ export interface User {
     org_id: number | null;
     created_at: string;
     active: number;
+    frozen: number;
 }
 
 export interface LedgerRow {
@@ -82,7 +84,8 @@ export class WalletStore {
                 role TEXT NOT NULL DEFAULT 'user',
                 org_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                active INTEGER NOT NULL DEFAULT 1
+                active INTEGER NOT NULL DEFAULT 1,
+                frozen INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS wallet_ledger (
@@ -110,6 +113,13 @@ export class WalletStore {
             CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_idempotency
                 ON wallet_ledger(request_id, txn_type) WHERE request_id IS NOT NULL;
         `);
+
+        // Auto-migrate: add columns that may not exist in older databases
+        const cols = this.db.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>;
+        const colNames = new Set(cols.map(c => c.name));
+        if (!colNames.has('frozen')) {
+            this.db.exec('ALTER TABLE users ADD COLUMN frozen INTEGER NOT NULL DEFAULT 0');
+        }
 
         logger.info({ dbPath }, '[wallet] schema initialized');
     }
@@ -252,6 +262,89 @@ export class WalletStore {
             }
             throw e;
         }
+    }
+
+    /** Find user by id (admin lookup). */
+    findUserById(id: number): User | null {
+        const row = this.db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+        return (row as User | undefined) ?? null;
+    }
+
+    /**
+     * Rotate a user's API key. Returns the new raw key (shown once; only the
+     * hash is stored).
+     */
+    rotateApiKey(userId: number): string {
+        const rawKey = generateUserApiKey();
+        const hash = WalletStore.hashApiKey(rawKey);
+        this.db.prepare('UPDATE users SET pharos_api_key_hash = ? WHERE id = ?').run(hash, userId);
+        return rawKey;
+    }
+
+    /**
+     * Credit a user's wallet with an admin-issued amount (manual refund or
+     * goodwill credit). Uses txn_type='topup' so it flows through the same
+     * balance-sum query, but with a synthetic stripe_event_id to satisfy the
+     * UNIQUE constraint without touching Stripe.
+     */
+    creditUser(userId: number, cents: number, reason: string): { ledgerId: number; newBalanceCents: number } {
+        const syntheticEventId = `admin-refund-${crypto.randomUUID()}`;
+        const result = this.db.prepare(`
+            INSERT INTO wallet_ledger (user_id, txn_type, amount_cents, stripe_event_id, policy)
+            VALUES (?, 'topup', ?, ?, ?)
+        `).run(userId, Math.abs(cents), syntheticEventId, reason);
+        const newBalanceCents = this.getBalanceCents(userId);
+        return { ledgerId: Number(result.lastInsertRowid), newBalanceCents };
+    }
+
+    /** Set the frozen flag on a user account. */
+    setFrozen(userId: number, frozen: boolean): void {
+        this.db.prepare('UPDATE users SET frozen = ? WHERE id = ?').run(frozen ? 1 : 0, userId);
+    }
+
+    /**
+     * Per-user usage breakdown from wallet_ledger (debit rows only).
+     * sinceIso defaults to 30 days ago when not provided.
+     * Savings are not available in the ledger — callers get 0 unless they
+     * provide a separate tracker reference (out of scope here).
+     */
+    getUsageByUser(userId: number, sinceIso?: string): {
+        totalRequests: number;
+        totalCostUsd: number;
+        byModel: Array<{ model: string; count: number; costUsd: number }>;
+        byDay: Array<{ date: string; requests: number; costUsd: number }>;
+    } {
+        const since = sinceIso ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+        const totals = this.db.prepare(`
+            SELECT COUNT(*) AS cnt, COALESCE(SUM(-amount_cents), 0) AS cost_cents
+            FROM wallet_ledger
+            WHERE user_id = ? AND txn_type = 'debit' AND amount_cents < 0 AND ts >= ?
+        `).get(userId, since) as { cnt: number; cost_cents: number };
+
+        const byModel = this.db.prepare(`
+            SELECT model, COUNT(*) AS cnt, COALESCE(SUM(-amount_cents), 0) AS cost_cents
+            FROM wallet_ledger
+            WHERE user_id = ? AND txn_type = 'debit' AND amount_cents < 0 AND ts >= ?
+              AND model IS NOT NULL
+            GROUP BY model
+            ORDER BY cost_cents DESC
+        `).all(userId, since) as Array<{ model: string; cnt: number; cost_cents: number }>;
+
+        const byDay = this.db.prepare(`
+            SELECT DATE(ts) AS day, COUNT(*) AS cnt, COALESCE(SUM(-amount_cents), 0) AS cost_cents
+            FROM wallet_ledger
+            WHERE user_id = ? AND txn_type = 'debit' AND amount_cents < 0 AND ts >= ?
+            GROUP BY day
+            ORDER BY day ASC
+        `).all(userId, since) as Array<{ day: string; cnt: number; cost_cents: number }>;
+
+        return {
+            totalRequests: totals.cnt,
+            totalCostUsd: totals.cost_cents / 100,
+            byModel: byModel.map(r => ({ model: r.model, count: r.cnt, costUsd: r.cost_cents / 100 })),
+            byDay: byDay.map(r => ({ date: r.day, requests: r.cnt, costUsd: r.cost_cents / 100 })),
+        };
     }
 
     close(): void {

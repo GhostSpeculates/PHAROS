@@ -93,6 +93,10 @@ export function createAuthMiddleware(
         if (multiTenantEnabled && wallet) {
             const user = wallet.findUserByApiKey(token);
             if (user) {
+                if (user.frozen) {
+                    reply.status(403).send({ error: 'account_frozen' });
+                    return reply;
+                }
                 // Balance guard — block at 402 if customer is out of credits.
                 const balanceCents = wallet.getBalanceCents(user.id);
                 if (balanceCents <= 0) {

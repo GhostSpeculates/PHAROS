@@ -315,6 +315,44 @@ export class TrackingStore {
     }
 
     /**
+     * Find a single request row by its tracking id. Returns null if not found.
+     */
+    findByRequestId(requestId: string): RequestRecord | null {
+        const row = this.db
+            .prepare('SELECT * FROM requests WHERE id = ?')
+            .get(requestId) as Record<string, unknown> | undefined;
+        if (!row) return null;
+        return {
+            id: row.id as string,
+            timestamp: row.timestamp as string,
+            tier: row.tier as string,
+            provider: row.provider as string,
+            model: row.model as string,
+            classificationScore: row.classification_score as number,
+            classificationType: row.classification_type as string,
+            classificationLatencyMs: row.classification_latency_ms as number,
+            classifierProvider: (row.classifier_provider as string | null) ?? 'unknown',
+            tokensIn: row.tokens_in as number,
+            tokensOut: row.tokens_out as number,
+            estimatedCost: row.estimated_cost as number,
+            baselineCost: row.baseline_cost as number,
+            savings: row.savings as number,
+            totalLatencyMs: row.total_latency_ms as number,
+            stream: !!(row.stream as number),
+            isDirectRoute: !!(row.is_direct_route as number),
+            userMessagePreview: (row.user_message_preview as string | null) ?? undefined,
+            status: (row.status as 'success' | 'error' | null) ?? 'success',
+            errorMessage: (row.error_message as string | null) ?? undefined,
+            debugInput: (row.debug_input as string | null) ?? undefined,
+            debugOutput: (row.debug_output as string | null) ?? undefined,
+            agentId: (row.agent_id as string | null) ?? undefined,
+            conversationId: (row.conversation_id as string | null) ?? undefined,
+            retryCount: (row.retry_count as number | null) ?? 0,
+            providerLatencyMs: (row.provider_latency_ms as number | null) ?? undefined,
+        };
+    }
+
+    /**
      * Close the database connection.
      * Safe to call multiple times; subsequent calls are no-ops.
      */

@@ -13,6 +13,7 @@ import { WalletStore } from './tracking/wallet-store.js';
 import { registerRoutes } from './gateway/router.js';
 import { registerMessagesRoutes } from './gateway/messages-routes.js';
 import { registerWalletRoutes } from './gateway/wallet-routes.js';
+import { registerAdminRoutes } from './gateway/admin-routes.js';
 import { registerFilterRoutes } from './gateway/filter-routes.js';
 import { registerEmbeddingsRoutes } from './gateway/embeddings-routes.js';
 import { EmbeddingsRouter } from './providers/embeddings.js';
@@ -212,6 +213,11 @@ export async function createServer(config: PharosConfig): Promise<{
     // Wave 5 — wallet routes (only if wallet store initialized)
     if (wallet) {
         registerWalletRoutes({ fastify: app, wallet, logger });
+    }
+
+    // Admin routes — operator-only surface for King Tut monitoring agent
+    if (wallet) {
+        registerAdminRoutes({ fastify: app, wallet, tracker, registry, config, logger });
     }
 
     // Wave 4 — filter advisor routes (uses existing classifier; safe even if classifier is null)
