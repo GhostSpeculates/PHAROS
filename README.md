@@ -2,10 +2,17 @@
   <h1 align="center">PHAROS</h1>
   <p align="center"><em>The Lighthouse for Intelligent AI Routing</em></p>
   <p align="center">
-    <strong>Save 66%+ on LLM costs without sacrificing quality.</strong><br/>
+    <strong>Save 70-90% on LLM costs without sacrificing quality.</strong><br/>
     Pharos intelligently routes every AI query to the optimal model — from free tiers to frontier models like Claude Opus — ensuring you only pay for power when you truly need it.
   </p>
 </p>
+
+---
+
+## Hosted or self-host
+
+- **Hosted SaaS** — buy credits at [pharos.nexlabs.pro](https://pharos.nexlabs.pro), get an API key in your inbox, point any OpenAI- or Anthropic-compatible client at `https://pharos-nexlabs.fly.dev`. No infra, no provider keys to manage.
+- **Self-host** — clone, drop in your own provider keys, run on your box. MIT licensed.
 
 ---
 
@@ -60,7 +67,7 @@ Your App  -->  Pharos Gateway  -->  Query Classifier  -->  Optimal Model
 
 - **OpenAI-compatible API** — Works with anything that speaks OpenAI format
 - **Intelligent classification** — AI-powered query complexity scoring, not rule-based
-- **8 providers** — Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot
+- **12 providers** — Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot, Together AI, Fireworks AI, OpenRouter
 - **Tiered model pools** — 4 tiers with configurable score ranges and model lists
 - **Automatic failover** — Provider down? Seamless cascade to the next best option
 - **Classifier failover chain** — Moonshot --> Groq --> xAI --> static fallback
@@ -116,7 +123,7 @@ See [GETTING_STARTED.md](./GETTING_STARTED.md) for detailed deployment instructi
 - **Runtime**: Node.js 20+ / TypeScript (ES2022, ESM)
 - **HTTP**: Fastify 5 with CORS, rate limiting
 - **Validation**: Zod
-- **Testing**: Vitest 4 (772 tests)
+- **Testing**: Vitest 4 (1620+ tests)
 - **Providers**: `@anthropic-ai/sdk`, `@google/genai`, `openai`
 - **Database**: better-sqlite3 (request tracking)
 - **Config**: YAML with env-var overrides
@@ -154,11 +161,17 @@ See [GETTING_STARTED.md](./GETTING_STARTED.md) for detailed deployment instructi
 | Endpoint | Description |
 |----------|-------------|
 | `GET /` | Live HTML dashboard (auto-refresh) |
-| `POST /v1/chat/completions` | Main routing endpoint (OpenAI-compatible) |
+| `POST /v1/chat/completions` | OpenAI-compatible routing endpoint |
+| `POST /v1/messages` | Anthropic-shape entry point (Claude Agent SDK) |
 | `GET /v1/models` | List available models |
+| `GET /v1/credits` | OpenRouter-shape wallet balance (Bearer auth) |
 | `GET /v1/stats` | Cost tracking and savings |
 | `GET /v1/stats/recent` | Last 25 requests |
 | `GET /health` | Health check with provider status |
+| `GET /wallet/me` | Full user record (Bearer auth) |
+| `POST /wallet/topup` | Stripe Checkout for existing customer (Bearer auth) |
+| `POST /wallet/checkout` | Stripe Checkout for new signup or top-up (public) |
+| `POST /webhook/stripe` | Stripe webhook receiver (verified signature) |
 
 ---
 
