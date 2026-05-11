@@ -64,9 +64,14 @@ All use the OpenAI-compatible adapter (`src/providers/openai-compat.ts`) except 
 - `POST /v1/chat/completions` — Main routing endpoint (OpenAI-compatible)
 - `POST /v1/messages` — Anthropic-shape entry point (Claude Agent SDK)
 - `GET /v1/models` — List available models
+- `GET /v1/credits` — OpenRouter-shape wallet balance (Bearer auth)
 - `GET /v1/stats` — Cost tracking and savings JSON
 - `GET /v1/stats/recent` — Last 25 requests JSON
 - `GET /health` — Health check with provider status
+- `GET /wallet/me` — Full user record (Bearer auth)
+- `POST /wallet/topup` — Stripe Checkout for existing customer (Bearer auth)
+- `POST /wallet/checkout` — Stripe Checkout for new signup or returning email (public)
+- `POST /webhook/stripe` — Stripe webhook receiver (verified signature, idempotent on event id)
 
 ## Tech Stack
 
@@ -261,7 +266,7 @@ src/
   - Performance learning + auto-tuned routing weights
 - **Phase 2.5 (SaaS Launch Blockers)**: 🚨 P0 — required before public SaaS launch
   - **Streaming + tool_use parity** — `ChatStreamChunk` currently only carries `content: string`; needs to surface `tool_calls` from each provider so the existing `AnthropicStreamTranslator` (which already supports tool_use events) gets fed properly. Every modern agent framework (Claude SDK, OpenAI Agents SDK, OpenClaw, Lindy) defaults to streaming, so without this Pharos breaks all of them for the most common pattern (agents using tools). Documented as known limitation in `src/translation/anthropic-stream.ts` and `src/gateway/messages-routes.ts` — promote to fix before launch.
-  - Wave 5 wallet completion (Stripe checkout + Resend welcome email — currently WIP in stash)
+  - ✅ Wave 5 wallet — Stripe Checkout (`/wallet/checkout` + `/wallet/topup`), webhook (`/webhook/stripe`), idempotent topup ledger, signup-on-first-payment, Resend welcome email with raw API key. 21 wallet route tests (May 10, 2026). See `CONTRACT.md` for the wire spec the landing page (`pharos.nexlabs.pro`) must follow.
 - **Phase 3 (Dashboard)**: NOT STARTED — web UI, model registry browser, routing visualization
 - **Phase 4 (Distribution)**: NOT STARTED — npm package, Docker Hub, docs site, community registry
 
@@ -283,3 +288,10 @@ Pharos is going SaaS as a **runtime-agnostic multi-modal power-up**. Drop-in inf
 
 ### Historical (VPS — decommissioned Feb 25, 2026)
 Archived in `~/pharos/data/pharos-vps-archive.db` — 201 requests, 73.4% savings, 35/35 stress test pass.
+
+<!-- KNOWLEDGE-BASE:start -->
+## Knowledge Base
+Personal knowledge ingested via `/learn <url>`. Auto-loads on session start.
+@~/knowledge/INDEX.md
+@~/knowledge/tags/pharos.md
+<!-- KNOWLEDGE-BASE:end -->
