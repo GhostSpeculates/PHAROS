@@ -1,180 +1,176 @@
-<p align="center">
-  <h1 align="center">PHAROS</h1>
-  <p align="center"><em>The Lighthouse for Intelligent AI Routing</em></p>
-  <p align="center">
-    <strong>Save 70-90% on LLM costs without sacrificing quality.</strong><br/>
-    Pharos intelligently routes every AI query to the optimal model — from free tiers to frontier models like Claude Opus — ensuring you only pay for power when you truly need it.
-  </p>
-</p>
+# PHAROS
+
+**The inference layer for AI agents that don't sleep.**
+
+```
+INFERENCE GATEWAY  ·  SIX MODALITIES  ·  50+ MODELS  ·  OPENAI-COMPAT
+```
+
+Pharos is a drop-in inference router. Point your agent at it, and every query
+gets scored 1–10 in real time and shipped to the cheapest model that can
+actually handle it. `hello world` doesn't go to Opus. A 200-step strategy plan
+doesn't go to Llama. Result: **70–90% lower bills with the same answers.**
+
+```
+PHAROS-NEXLABS.FLY.DEV  ·  LIVE  ·  30% OVER UPSTREAM  ·  $5 MINIMUM TOP-UP
+```
 
 ---
 
-## Hosted or self-host
+## Why this exists
 
-- **Hosted SaaS** — buy credits at [pharos.nexlabs.pro](https://pharos.nexlabs.pro), get an API key in your inbox, point any OpenAI- or Anthropic-compatible client at `https://pharos-nexlabs.fly.dev`. No infra, no provider keys to manage.
-- **Self-host** — clone, drop in your own provider keys, run on your box. MIT licensed.
+Every modern agent (Claude SDK, OpenAI Agents, OpenClaw, Lindy, your own thing)
+defaults to the same expensive model for every call — including the dumb ones.
+That's how a Discord bot burns $400 in a weekend. Pharos sits in front of your
+inference, classifies the query, and routes accordingly. You wire it up once,
+you stop overpaying forever.
+
+Built because I (Ghost / Nex Labs) was burning credits on agents that didn't
+need frontier-tier intelligence to answer "ok." If you've seen the same bill,
+you already know.
 
 ---
 
-## Quick Start
+## Use it
+
+**Hosted** → [pharos.nexlabs.pro](https://pharos.nexlabs.pro). Pay $5+, get a
+key in your inbox, change one base URL, ship.
+
+```bash
+curl https://pharos-nexlabs.fly.dev/v1/chat/completions \
+  -H "Authorization: Bearer pharos-..." \
+  -H 'content-type: application/json' \
+  -d '{"model":"auto","messages":[{"role":"user","content":"hello"}]}'
+```
+
+That's the whole integration. Anything that speaks OpenAI or Anthropic format
+works.
+
+**Self-host** → MIT licensed. Bring your own provider keys, run on your box,
+keep the savings.
 
 ```bash
 git clone https://github.com/GhostSpeculates/PHAROS.git
-cd PHAROS
-npm install
-cp .env.example .env
-# Edit .env — add at least GROQ_API_KEY and PHAROS_API_KEY
+cd PHAROS && npm install
+cp .env.example .env   # add at minimum GROQ_API_KEY
 npm run dev
 ```
 
-**Prerequisites:** Node.js 20+ and a [Groq API key](https://console.groq.com) (free).
-
-**Full setup guide:** [GETTING_STARTED.md](./GETTING_STARTED.md)
+Full setup: [GETTING_STARTED.md](./GETTING_STARTED.md)
 
 ---
 
-## What is Pharos?
+## How it routes
 
-Pharos is an **intelligent LLM routing gateway** — a service that sits between your AI application (OpenClaw, ElizaOS, custom bots, any OpenAI-compatible client) and the model providers (Anthropic, Google, DeepSeek, Groq, Mistral, OpenAI, xAI, Moonshot).
+A lightweight classifier (Kimi by default, with Groq + xAI as fallbacks) scores
+each query 1–10. The score picks a tier. The tier picks a model.
 
-Instead of sending every query to an expensive frontier model, Pharos **classifies each query in real-time** and routes it to the optimal model from a tiered pool of providers:
+| Score | Tier | Sample models | What it's for |
+|:-----:|------|--------------|---------------|
+| 1–3 | Free | Groq Llama 3.3, Gemini Flash | Greetings, lookups, simple replies |
+| 4–6 | Economical | DeepSeek V3, Kimi K2, GPT-4o mini | Analysis, planning, moderate reasoning |
+| 7–8 | Premium | Claude Sonnet, GPT-4o | Strategy, creative, multi-step |
+| 9–10 | Frontier | Claude Opus | Genuinely hard problems |
 
-- **Free (Score 1-3):** Simple queries, greetings, routine tasks --> Groq Llama 3.3, Gemini Flash
-- **Economical (Score 4-6):** Analysis, planning, moderate reasoning --> Groq, Kimi K2, DeepSeek, GPT-4o
-- **Premium (Score 7-8):** Complex strategy, creative work, multi-step reasoning --> Claude Sonnet, GPT-4o
-- **Frontier (Score 9-10):** The hardest problems that genuinely need the best --> Claude Opus
-
-The result: **~70% of queries cost $0, ~25% cost fractions of a penny, and only ~5% hit premium models** — with essentially identical quality to running everything on Sonnet.
-
-## How It Works
+If a provider goes down mid-request, Pharos cascades to the next available
+model in the same tier. If the classifier goes down, it falls back to a static
+tier score so traffic keeps flowing.
 
 ```
-Your App  -->  Pharos Gateway  -->  Query Classifier  -->  Optimal Model
-                                        |
-                    +-------------------+-------------------+
-                    v                   v                    v
-              Free Models        Cheap Models         Premium Models
-            (Gemini, Groq)     (DeepSeek, Kimi)    (Sonnet, Opus)
+client  ──►  Pharos  ──►  classifier  ──►  tier  ──►  provider
+                              │
+                              └─ Kimi → Groq → xAI → static fallback
 ```
 
-1. **Drop-in replacement**: Pharos exposes an OpenAI-compatible API. Change one URL and you are routed.
-2. **Real-time classification**: A lightweight classifier (runs on Moonshot/Kimi) scores query complexity (1-10) with a failover chain (Moonshot --> Groq --> xAI --> static fallback).
-3. **Smart routing**: Based on the score, Pharos routes to the cheapest model that can handle the query well.
-4. **Automatic failover**: If a provider is down, Pharos cascades to the next available model in the tier.
-5. **Full observability**: Live dashboard showing costs, model usage, savings, and provider health.
+---
 
-## Key Features
+## What's in the box
 
-- **OpenAI-compatible API** — Works with anything that speaks OpenAI format
-- **Intelligent classification** — AI-powered query complexity scoring, not rule-based
-- **12 providers** — Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral, xAI, Moonshot, Together AI, Fireworks AI, OpenRouter
-- **Tiered model pools** — 4 tiers with configurable score ranges and model lists
-- **Automatic failover** — Provider down? Seamless cascade to the next best option
-- **Classifier failover chain** — Moonshot --> Groq --> xAI --> static fallback
-- **Cost dashboard** — See exactly how much Pharos saved you (live at `/`)
-- **Context-size-aware routing** — Pre-flight filtering skips providers that cannot handle large requests
-- **Extended thinking passthrough** — Anthropic extended thinking works transparently
-- **Streaming support** — Server-Sent Events matching OpenAI's format
-- **API key management** — One place for all your provider keys
-- **Configurable thresholds** — Tune the quality/cost tradeoff to your preference
-- **Self-hostable** — Runs on your own VPS or Docker (2GB+ RAM, no GPU needed)
-- **Semantic caching** — _Coming in Phase 2_
-
-## Who Is This For?
-
-- **OpenClaw / ElizaOS users** burning through API credits
-- **Discord bot operators** paying too much for AI responses
-- **Indie developers** building AI-powered products on a budget
-- **Small businesses** using AI assistants for operations
-- **Anyone** who wants frontier AI quality at significantly less cost
+- **12 providers** — Anthropic, Google, OpenAI, DeepSeek, Groq, Mistral,
+  Moonshot, Together AI, Fireworks AI, OpenRouter, xAI (optional), local
+- **Six modalities** — chat, embeddings, images, video, TTS, STT
+- **OpenAI + Anthropic shape** — `/v1/chat/completions` and `/v1/messages`
+  both work; streaming on both
+- **Tool-use parity** — tool calls survive routing across providers
+- **Wallet** — pay-as-you-go credits, Stripe Checkout, OpenRouter-shape
+  `/v1/credits`
+- **Live dashboard** at `/` — costs, savings, model usage, provider health
+- **Sentry error capture** + structured Pino logs
+- **Self-host or SaaS** — same code, your call
 
 ---
 
-## Docker
+## API
 
-```bash
-# Start Pharos
-docker compose up -d
-
-# View logs
-docker compose logs -f pharos
-
-# Stop
-docker compose down
-```
-
-Make sure your `.env` file is configured before running. SQLite data persists in `./data/` and config overrides load from `./config/`.
-
-## Deployment
-
-| Method | Command | Notes |
-|--------|---------|-------|
-| **Local dev** | `npm run dev` | Auto-restarts on file changes |
-| **Production** | `npm run build && npm start` | Compiled TypeScript |
-| **Docker** | `docker compose up -d` | See above |
-| **VPS** | `bash scripts/deploy-vps.sh` | SCP + systemd |
-
-See [GETTING_STARTED.md](./GETTING_STARTED.md) for detailed deployment instructions.
-
----
-
-## Tech Stack
-
-- **Runtime**: Node.js 20+ / TypeScript (ES2022, ESM)
-- **HTTP**: Fastify 5 with CORS, rate limiting
-- **Validation**: Zod
-- **Testing**: Vitest 4 (1620+ tests)
-- **Providers**: `@anthropic-ai/sdk`, `@google/genai`, `openai`
-- **Database**: better-sqlite3 (request tracking)
-- **Config**: YAML with env-var overrides
-- **Logging**: Pino structured logging
-
-## Project Status
-
-**Phase 1 (Core Engine): IN PROGRESS** — Deployed to production, routing live traffic. Core infrastructure is built but Phase 1 requires continued hardening, bug fixes, and professional polish before moving to Phase 2.
-
-- 8 providers configured, 772 tests passing, 73%+ cost savings
-- Classifier failover chain, context-size-aware routing, production hardening
-- Needs continued stability testing and edge case coverage
-
-**Phase 2 (Intelligence): Planned** — Semantic caching, conversation-aware routing, prompt caching
-
-**Phase 3 (Dashboard): Planned** — React SPA, configuration UI, real-time feed
-
-**Phase 4 (Distribution): Planned** — npm package, Docker Hub image, documentation site
-
----
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [GETTING_STARTED.md](./GETTING_STARTED.md) | Step-by-step setup guide, API keys, configuration, deployment |
-| [NOIR-INTEGRATION.md](./NOIR-INTEGRATION.md) | Connecting OpenClaw/Noir Discord bots to Pharos |
-| [PRODUCT.md](./PRODUCT.md) | Product definition, architecture, roadmap, competitive analysis |
-| [config/pharos.default.yaml](./config/pharos.default.yaml) | Full configuration reference with all defaults |
-
----
-
-## API Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /` | Live HTML dashboard (auto-refresh) |
-| `POST /v1/chat/completions` | OpenAI-compatible routing endpoint |
-| `POST /v1/messages` | Anthropic-shape entry point (Claude Agent SDK) |
-| `GET /v1/models` | List available models |
-| `GET /v1/credits` | OpenRouter-shape wallet balance (Bearer auth) |
-| `GET /v1/stats` | Cost tracking and savings |
-| `GET /v1/stats/recent` | Last 25 requests |
-| `GET /health` | Health check with provider status |
+| Endpoint | Notes |
+|----------|-------|
+| `POST /v1/chat/completions` | OpenAI shape, streaming, tool use |
+| `POST /v1/messages` | Anthropic shape, Claude Agent SDK compatible |
+| `POST /v1/embeddings` | Embedding routing |
+| `POST /v1/images/generations` | Image generation, quality-tier routing |
+| `POST /v1/videos/generations` | Async video gen, returns job id |
+| `POST /v1/audio/speech` | TTS |
+| `POST /v1/audio/transcriptions` | STT |
+| `GET /v1/models` | Model catalog |
+| `GET /v1/credits` | Balance (OpenRouter-shape, Bearer auth) |
 | `GET /wallet/me` | Full user record (Bearer auth) |
-| `POST /wallet/topup` | Stripe Checkout for existing customer (Bearer auth) |
-| `POST /wallet/checkout` | Stripe Checkout for new signup or top-up (public) |
-| `POST /webhook/stripe` | Stripe webhook receiver (verified signature) |
+| `POST /wallet/topup` | Buy more credits (Bearer auth) |
+| `POST /wallet/checkout` | Public signup or returning top-up |
+| `POST /webhook/stripe` | Stripe webhook receiver |
+| `GET /v1/stats` | Live cost + savings JSON |
+| `GET /` | HTML dashboard |
+| `GET /health` | Health + provider status |
 
 ---
 
-Built by [Nex Labs](https://github.com/GhostSpeculates)
+## Stack
 
-*Named after the [Lighthouse of Alexandria](https://en.wikipedia.org/wiki/Lighthouse_of_Alexandria) — one of the Seven Wonders of the Ancient World. For centuries, the Pharos guided every ship safely through dangerous waters to the right port. Today, Pharos guides every AI query to the right model.*
+Node 20+ · TypeScript (ESM) · Fastify 5 · Zod · Vitest (1620+ tests) ·
+better-sqlite3 · Pino · Stripe SDK · Resend · `@sentry/node` · YAML config
+with env overrides.
+
+Deploys on Fly.io (production), Docker Compose (local), Mac mini (dev),
+or any box with Node 20.
+
+---
+
+## Status
+
+**Phase 1 (core engine):** shipped. Production traffic, 87% average cost
+savings vs Sonnet baseline across 17k+ requests on the prior deployment.
+
+**Phase 2 (universal router):** mostly shipped. Provider expansion, model
+registry with capabilities + pricing + speed, task-type affinity routing,
+conversation-aware tier floors, prompt caching, Anthropic `/v1/messages`
+endpoint, tool-use parity across providers.
+
+**Phase 2.5 (SaaS launch):** shipped. Wallet, Stripe Checkout, Resend welcome
+email, OpenRouter-shape credits API, live on `pharos.nexlabs.pro`.
+
+**Next:** admin/recovery tooling, anomaly detector, synthetic canary, semantic
+caching.
+
+---
+
+## Security
+
+API keys are bearer tokens over HTTPS; only SHA-256 hashes are stored. Stripe
+webhooks verify signatures and are idempotent on `stripe_event_id`. Rate
+limits per IP and per agent. CORS allowlisted. Spending caps with 80%/100%
+alerts. SQLite on a persistent Fly volume, with Fly snapshots.
+
+If you find something, open an issue with `security:` prefix or DM me on
+GitHub.
+
+---
+
+## License
+
+MIT. Use it. Fork it. Self-host it. Ship something.
+
+---
+
+Built by [Ghost / Nex Labs](https://github.com/GhostSpeculates). The name
+comes from the [Lighthouse of Alexandria](https://en.wikipedia.org/wiki/Lighthouse_of_Alexandria) —
+for centuries it guided every ship through dark water to the right port.
+That's the job here, just for tokens.
