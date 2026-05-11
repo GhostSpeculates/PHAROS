@@ -158,7 +158,7 @@ describe('createAuthMiddleware', () => {
 
     describe('different API key values', () => {
         it('works with long complex API keys', async () => {
-            const longKey = 'sk-pharos-abcdef1234567890abcdef1234567890abcdef1234567890';
+            const longKey = 'long-complex-bearer-token-for-auth-middleware-test-coverage-only';
             const config = makeConfig(longKey);
             const middleware = createAuthMiddleware(config);
 

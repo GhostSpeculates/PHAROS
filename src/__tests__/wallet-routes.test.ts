@@ -69,8 +69,8 @@ describe('wallet routes', () => {
         stripeMockState.constructEvent.mockReset();
         // Reset the cached Stripe client between tests since the module memoizes it.
         // We do this by re-importing — but simpler: just toggle the env var.
-        process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
-        process.env.STRIPE_WEBHOOK_SECRET = 'whsec_dummy';
+        process.env.STRIPE_SECRET_KEY = 'mocked-in-tests';
+        process.env.STRIPE_WEBHOOK_SECRET = 'mocked-in-tests';
         process.env.PHAROS_PUBLIC_URL = 'https://example.com';
         resendSpy = vi
             .spyOn(emailModule, 'sendWelcomeEmail')

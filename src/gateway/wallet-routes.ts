@@ -26,6 +26,7 @@ import type { WalletStore } from '../tracking/wallet-store.js';
 import type { Logger } from '../utils/logger.js';
 import { generateUserApiKey } from '../utils/id.js';
 import { sendWelcomeEmail } from '../utils/email.js';
+import { createSlidingWindowLimiter } from './middleware/checkout-rate-limit.js';
 
 const TOPUP_MIN_USD = 5;
 const TOPUP_MAX_USD = 500;
@@ -76,6 +77,11 @@ export function registerWalletRoutes(opts: {
     logger: Logger;
 }): void {
     const { fastify, wallet, logger } = opts;
+
+    // Per-IP and per-email limiters for the public /wallet/checkout endpoint.
+    const CHECKOUT_WINDOW_MS = 3600_000; // 1 hour
+    const ipLimiter = createSlidingWindowLimiter(CHECKOUT_WINDOW_MS, 10, 'ip', logger);
+    const emailLimiter = createSlidingWindowLimiter(CHECKOUT_WINDOW_MS, 3, 'email', logger);
 
     // Helper: extract user from Authorization header.
     function authUser(req: FastifyRequest) {
@@ -203,6 +209,20 @@ export function registerWalletRoutes(opts: {
         if (cents == null) {
             reply.status(400);
             return { error: `amount_usd must be a number between ${TOPUP_MIN_USD} and ${TOPUP_MAX_USD}` };
+        }
+
+        const ipCheck = ipLimiter.check(req.ip);
+        if (!ipCheck.allowed) {
+            reply.status(429);
+            reply.header('Retry-After', String(ipCheck.retryAfterSeconds));
+            return { error: 'rate_limited', scope: 'ip', message: 'Too many checkout requests from this IP. Try again later.' };
+        }
+
+        const emailCheck = emailLimiter.check(email);
+        if (!emailCheck.allowed) {
+            reply.status(429);
+            reply.header('Retry-After', String(emailCheck.retryAfterSeconds));
+            return { error: 'rate_limited', scope: 'email', message: 'Too many checkout requests for this email. Try again later.' };
         }
 
         try {

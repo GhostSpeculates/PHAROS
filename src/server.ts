@@ -115,6 +115,10 @@ export async function createServer(config: PharosConfig): Promise<{
     const app = Fastify({
         logger: false, // We use our own pino logger
         bodyLimit: config.server.bodyLimitMb * 1024 * 1024,
+        // Trust upstream proxy (Fly edge) so req.ip reads X-Forwarded-For
+        // instead of Fly's internal loopback. Required for per-IP rate limits
+        // (global @fastify/rate-limit + /wallet/checkout) to bucket per real client.
+        trustProxy: true,
     });
 
     // Register CORS — configurable via PHAROS_CORS_ORIGINS env var (comma-separated)

@@ -1,0 +1,28 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Pharos repo false-positive suppressions"
+
+# Obvious example/placeholder values used in docs and tests
+regexes = [
+  # Literal ellipsis placeholder: Bearer pharos-...
+  '''pharos-\.\.\.''',
+  # All-caps env var style placeholders
+  '''YOUR_PHAROS_API_KEY''',
+  '''your-secret-here''',
+  '''your-pharos-api-key''',
+  # Explicit placeholder in NOIR-INTEGRATION.md
+  '''noir-pharos-secret-key-change-this''',
+]
+
+# Paths that should never be scanned
+paths = [
+  '''node_modules''',
+  '''dist''',
+  '''data''',
+  '''\.git''',
+  '''coverage''',
+  '''\.env\.example''',
+  '''\.pharos-pre-deploy-backup''',
+]
