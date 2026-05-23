@@ -284,13 +284,13 @@ describe('sortByRegistry', () => {
     });
 
     it('prefers cheaper providers when speed is the same', () => {
-        // Both medium speed, but deepseek is much cheaper than moonshot
+        // Both medium speed; google gemini ($0.375/M) < moonshot kimi ($2.5/M)
         const candidates = [
-            { provider: 'moonshot', model: 'kimi-latest', tier: 'economical' as TierName },     // medium, $3.0
-            { provider: 'deepseek', model: 'deepseek-chat', tier: 'economical' as TierName },   // medium, $0.42
+            { provider: 'moonshot', model: 'kimi-latest', tier: 'economical' as TierName },       // medium, $2.5
+            { provider: 'google', model: 'gemini-2.5-flash', tier: 'economical' as TierName },    // medium, $0.375
         ];
         const sorted = sortByRegistry(candidates, 'economical');
-        expect(sorted[0].provider).toBe('deepseek');
+        expect(sorted[0].provider).toBe('google');
     });
 
     it('preserves tier boundaries (never moves cross-tier)', () => {

@@ -6,12 +6,12 @@ describe('getModelSpeed', () => {
         expect(getModelSpeed('groq', 'llama-3.3-70b-versatile')).toBe('fast');
     });
 
-    it('returns medium for deepseek-chat', () => {
-        expect(getModelSpeed('deepseek', 'deepseek-chat')).toBe('medium');
+    it('returns undefined for deepseek-chat (not in static seed)', () => {
+        expect(getModelSpeed('deepseek', 'deepseek-chat')).toBeUndefined();
     });
 
-    it('returns slow for claude-opus', () => {
-        expect(getModelSpeed('anthropic', 'claude-opus-4-20250514')).toBe('slow');
+    it('returns undefined for claude-opus (not in static seed)', () => {
+        expect(getModelSpeed('anthropic', 'claude-opus-4-20250514')).toBeUndefined();
     });
 
     it('returns undefined for unknown model', () => {
@@ -26,10 +26,8 @@ describe('getModelCost', () => {
         expect(getModelCost('groq', 'llama-3.3-70b-versatile')).toBeCloseTo(1.38);
     });
 
-    it('returns sum of input+output for paid models', () => {
-        const cost = getModelCost('deepseek', 'deepseek-chat');
-        expect(cost).toBeDefined();
-        expect(cost).toBeCloseTo(0.42); // 0.14 + 0.28
+    it('returns undefined for deepseek-chat (not in static seed)', () => {
+        expect(getModelCost('deepseek', 'deepseek-chat')).toBeUndefined();
     });
 
     it('returns undefined for unknown model', () => {
@@ -46,8 +44,8 @@ describe('getSpeedRank', () => {
         expect(getSpeedRank('deepseek', 'deepseek-chat')).toBe(1);
     });
 
-    it('returns 2 for slow models', () => {
-        expect(getSpeedRank('anthropic', 'claude-opus-4-20250514')).toBe(2);
+    it('returns 1 for claude-opus (not in static seed, defaults to medium)', () => {
+        expect(getSpeedRank('anthropic', 'claude-opus-4-20250514')).toBe(1);
     });
 
     it('defaults to 1 (medium) for unknown models', () => {
