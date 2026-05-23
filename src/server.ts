@@ -212,7 +212,7 @@ export async function createServer(config: PharosConfig): Promise<{
 
     // Wave 5 — wallet routes (only if wallet store initialized)
     if (wallet) {
-        registerWalletRoutes({ fastify: app, wallet, logger });
+        registerWalletRoutes({ fastify: app, wallet, logger, operatorKey: config.auth.apiKey });
     }
 
     // Admin routes — operator-only surface for King Tut monitoring agent
