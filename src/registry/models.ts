@@ -34,16 +34,6 @@ export interface ModelRegistryEntry {
     speed: SpeedTier;
 }
 
-/** Best-effort speed tier for static-seed providers. */
-const PROVIDER_SPEED: Record<string, SpeedTier> = {
-    groq: 'fast',
-    xai: 'fast',
-    google: 'medium',
-    openai: 'medium',
-    moonshot: 'medium',
-    anthropic: 'slow',
-};
-
 export const MODEL_REGISTRY: ModelRegistryEntry[] = STATIC_SEED.map(s => ({
     id: s.id,
     provider: s.provider,
@@ -51,7 +41,7 @@ export const MODEL_REGISTRY: ModelRegistryEntry[] = STATIC_SEED.map(s => ({
     contextWindow: s.contextWindow,
     capabilities: ['conversation'],
     pricing: s.pricing,
-    speed: PROVIDER_SPEED[s.provider] ?? 'medium',
+    speed: 'medium',
 }));
 
 /**

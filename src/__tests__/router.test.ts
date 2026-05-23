@@ -118,8 +118,11 @@ describe('ModelRouter', () => {
             const router = new ModelRouter(config, registry, logger);
             const result = router.route(makeClassification(5));
 
+            // With merged-registry pricing, anthropic claude-sonnet has known cost ($18/M)
+            // while deepseek isn't in the static seed (returns Infinity from getModelCost).
+            // sortByRegistry puts anthropic first as the cheaper known-cost candidate.
             expect(result.tier).toBe('economical');
-            expect(result.provider).toBe('deepseek');
+            expect(result.provider).toBe('anthropic');
         });
 
         it('routes score 7 to premium tier', () => {

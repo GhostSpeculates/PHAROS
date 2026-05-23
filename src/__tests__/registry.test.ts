@@ -86,7 +86,7 @@ describe('findModel', () => {
         const model = findModel('anthropic', 'claude-sonnet-4-20250514');
         expect(model).toBeDefined();
         expect(model!.displayName).toBe('Claude Sonnet 4');
-        expect(model!.speed).toBe('slow');
+        expect(model!.speed).toBe('medium');
     });
 
     it('finds gpt-4o', () => {

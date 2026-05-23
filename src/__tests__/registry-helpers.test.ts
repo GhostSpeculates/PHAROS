@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { getModelSpeed, getModelCost, getSpeedRank, getRegistryEntry } from '../registry/index.js';
 
 describe('getModelSpeed', () => {
-    it('returns fast for groq llama', () => {
-        expect(getModelSpeed('groq', 'llama-3.3-70b-versatile')).toBe('fast');
+    it('returns medium for groq llama (static seed uniform speed)', () => {
+        expect(getModelSpeed('groq', 'llama-3.3-70b-versatile')).toBe('medium');
     });
 
     it('returns undefined for deepseek-chat (not in static seed)', () => {
@@ -36,11 +36,11 @@ describe('getModelCost', () => {
 });
 
 describe('getSpeedRank', () => {
-    it('returns 0 for fast models', () => {
-        expect(getSpeedRank('groq', 'llama-3.3-70b-versatile')).toBe(0);
+    it('returns 1 (medium) for groq llama (static seed uniform speed)', () => {
+        expect(getSpeedRank('groq', 'llama-3.3-70b-versatile')).toBe(1);
     });
 
-    it('returns 1 for medium models', () => {
+    it('returns 1 for deepseek-chat (not in seed, defaults to medium)', () => {
         expect(getSpeedRank('deepseek', 'deepseek-chat')).toBe(1);
     });
 
