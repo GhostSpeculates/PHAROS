@@ -29,9 +29,10 @@ export async function fetchHuggingFaceModels(opts: HFFetchOptions): Promise<Dyna
     const timeoutMs = opts.timeoutMs ?? 5_000;
 
     const controller = new AbortController();
-    const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), timeoutMs),
-    );
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+        timerId = setTimeout(() => reject(new Error('timeout')), timeoutMs);
+    });
 
     let res: Response;
     try {
@@ -44,7 +45,10 @@ export async function fetchHuggingFaceModels(opts: HFFetchOptions): Promise<Dyna
         ]);
     } catch {
         controller.abort();
+        if (timerId) clearTimeout(timerId);
         return [];
+    } finally {
+        if (timerId) clearTimeout(timerId);
     }
 
     if (!res.ok) return [];
