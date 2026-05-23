@@ -32,6 +32,45 @@ export const ProviderConfigSchema = z.object({
     healthCooldownMs: z.number().min(1000).default(60000),
 });
 
+// ─── Sync configuration ───
+export const SyncSourceSchema = z.object({
+    enabled: z.boolean(),
+    endpoint: z.string().url().optional(),
+});
+
+export const SyncConfigSchema = z.object({
+    enabled: z.boolean(),
+    intervalHours: z.number().positive(),
+    cacheFile: z.string(),
+    sources: z.object({
+        huggingface: SyncSourceSchema,
+        vercel: SyncSourceSchema,
+        direct: SyncSourceSchema,
+    }),
+});
+export type SyncConfig = z.infer<typeof SyncConfigSchema>;
+
+// ─── Tier price boundary ───
+export const TierBoundarySchema = z.object({
+    tier: z.tuple([z.number().min(1), z.number().max(10)]),
+    maxInputPerMillion: z.number().min(0),
+    maxOutputPerMillion: z.number().min(0),
+});
+
+export const TierPriceBoundariesSchema = z.object({
+    free: TierBoundarySchema,
+    economical: TierBoundarySchema,
+    premium: TierBoundarySchema,
+    frontier: TierBoundarySchema,
+});
+export type TierPriceBoundaries = z.infer<typeof TierPriceBoundariesSchema>;
+
+// ─── Resolver configuration ───
+export const ResolverConfigSchema = z.object({
+    preference: z.array(z.enum(['direct', 'huggingface', 'vercel'])).min(1),
+});
+export type ResolverConfig = z.infer<typeof ResolverConfigSchema>;
+
 // ─── Classifier provider entry ───
 export const ClassifierProviderEntrySchema = z.object({
     provider: z.string(),
@@ -285,6 +324,9 @@ export const PharosConfigSchema = z.object({
     stt: STTConfigSchema.optional(),
     images: ImagesConfigSchema.optional(),
     videos: VideosConfigSchema.optional(),
+    sync: SyncConfigSchema.optional(),
+    tierPriceBoundaries: TierPriceBoundariesSchema.optional(),
+    resolver: ResolverConfigSchema.optional(),
 });
 
 // ─── Type exports ───
