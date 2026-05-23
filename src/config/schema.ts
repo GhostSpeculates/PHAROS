@@ -52,7 +52,11 @@ export type SyncConfig = z.infer<typeof SyncConfigSchema>;
 
 // ─── Tier price boundary ───
 export const TierBoundarySchema = z.object({
-    tier: z.tuple([z.number().min(1), z.number().max(10)]),
+    tier: z
+        .tuple([z.number().min(1), z.number().max(10)])
+        .refine(([min, max]) => min <= max, {
+            message: 'tier[0] (min) must be <= tier[1] (max)',
+        }),
     maxInputPerMillion: z.number().min(0),
     maxOutputPerMillion: z.number().min(0),
 });

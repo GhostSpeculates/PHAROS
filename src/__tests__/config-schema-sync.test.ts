@@ -38,6 +38,17 @@ describe('tier price boundaries schema', () => {
         });
         expect(parsed.free.maxInputPerMillion).toBe(0.10);
     });
+
+    it('rejects tier tuple with min > max', () => {
+        expect(() =>
+            TierPriceBoundariesSchema.parse({
+                free:       { tier: [5, 3], maxInputPerMillion: 0.10, maxOutputPerMillion: 0.40 },
+                economical: { tier: [4, 6], maxInputPerMillion: 1.00, maxOutputPerMillion: 4.00 },
+                premium:    { tier: [7, 8], maxInputPerMillion: 5.00, maxOutputPerMillion: 20.00 },
+                frontier:   { tier: [9, 10], maxInputPerMillion: 999, maxOutputPerMillion: 999 },
+            }),
+        ).toThrow();
+    });
 });
 
 describe('resolver config schema', () => {
