@@ -20,8 +20,10 @@ describe('getModelSpeed', () => {
 });
 
 describe('getModelCost', () => {
-    it('returns 0 for free models', () => {
-        expect(getModelCost('groq', 'llama-3.3-70b-versatile')).toBe(0);
+    it('returns real static-seed price for groq llama (was 0 in legacy MODEL_REGISTRY)', () => {
+        // getModelCost now prefers merged-registry pricing over legacy MODEL_REGISTRY zeros.
+        // Static seed has groq llama at 0.59 + 0.79 = 1.38 per million tokens.
+        expect(getModelCost('groq', 'llama-3.3-70b-versatile')).toBeCloseTo(1.38);
     });
 
     it('returns sum of input+output for paid models', () => {

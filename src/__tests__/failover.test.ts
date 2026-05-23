@@ -95,11 +95,15 @@ describe('findAvailableModel', () => {
         const registry = makeRegistry({ groq: true, google: true, anthropic: true, deepseek: true });
         const result = findAvailableModel('free', config, registry, logger);
 
-        expect(result.provider).toBe('groq');
-        expect(result.model).toBe('llama-3.3-70b-versatile');
+        // With real merged-registry pricing, google Gemini Flash (0.375/M) is cheaper
+        // than groq Llama (1.38/M), so sortByRegistry puts google first in the free tier.
+        // attempts is relative to original config order: google is at config position 1,
+        // so attempts=2 and groq appears as a "skipped" candidate.
+        expect(result.provider).toBe('google');
+        expect(result.model).toBe('gemini-2.5-flash');
         expect(result.tier).toBe('free');
-        expect(result.attempts).toBe(1);
-        expect(result.failedProviders).toEqual([]);
+        expect(result.attempts).toBe(2);
+        expect(result.failedProviders).toEqual(['groq/llama-3.3-70b-versatile']);
     });
 
     it('falls over to second model in tier when first is down', () => {
