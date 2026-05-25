@@ -10,14 +10,14 @@ const llamaGroq: DynamicEntry = {
     syncedAt: 1,
 };
 const llamaHF: DynamicEntry = {
-    canonicalId: 'meta-llama/Llama-3.3-70B-Instruct', id: 'meta-llama/Llama-3.3-70B-Instruct',
-    provider: 'huggingface-together', source: 'huggingface', displayName: 'Llama 70B',
+    canonicalId: 'meta-llama/Llama-3.3-70B-Instruct', id: 'meta-llama/Llama-3.3-70B-Instruct:together',
+    provider: 'huggingface', source: 'huggingface', displayName: 'Llama 70B',
     contextWindow: 128_000, pricing: { inputPerMillion: 0.88, outputPerMillion: 0.88 },
     syncedAt: 1,
 };
 const llamaVercel: DynamicEntry = {
     canonicalId: 'meta-llama/Llama-3.3-70B-Instruct', id: 'meta-llama/Llama-3.3-70B-Instruct',
-    provider: 'vercel-gateway', source: 'vercel', displayName: 'Llama 70B',
+    provider: 'vercel_gateway', source: 'vercel', displayName: 'Llama 70B',
     contextWindow: 128_000, pricing: { inputPerMillion: 1.00, outputPerMillion: 1.00 },
     syncedAt: 1,
 };

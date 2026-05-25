@@ -21,7 +21,7 @@ describe('sync orchestrator', () => {
             cachePath,
             sources: {
                 huggingface: async () => [sample('a/b', 'hf-x', 'huggingface')],
-                vercel: async () => [sample('c/d', 'vercel-gateway', 'vercel')],
+                vercel: async () => [sample('c/d', 'vercel_gateway', 'vercel')],
                 direct: async () => [sample('e/f', 'openai', 'direct')],
             },
         });
@@ -80,7 +80,7 @@ describe('sync orchestrator', () => {
             cachePath,
             sources: {
                 huggingface: async () => { throw new Error('boom'); },
-                vercel: async () => [sample('c/d', 'vercel-gateway', 'vercel')],
+                vercel: async () => [sample('c/d', 'vercel_gateway', 'vercel')],
                 direct: async () => [],
             },
         });

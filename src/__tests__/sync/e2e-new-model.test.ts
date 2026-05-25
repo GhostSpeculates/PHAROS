@@ -22,8 +22,8 @@ describe('e2e: new HF model appears, gets bucketed', () => {
     it('synthetic new HF model lands in correct tier', async () => {
         const syntheticModel = {
             canonicalId: 'new-org/Shiny-Cheap-Model',
-            id: 'new-org/Shiny-Cheap-Model',
-            provider: 'huggingface-novita',
+            id: 'new-org/Shiny-Cheap-Model:novita',
+            provider: 'huggingface',
             source: 'huggingface' as const,
             displayName: 'Shiny Cheap',
             contextWindow: 128_000,
@@ -49,7 +49,7 @@ describe('e2e: new HF model appears, gets bucketed', () => {
 
         const tiers = populateTiers(merged, boundaries);
         const freeIds = tiers.free.models.map(m => m.model);
-        expect(freeIds).toContain('new-org/Shiny-Cheap-Model');
+        expect(freeIds).toContain('new-org/Shiny-Cheap-Model:novita');
 
         await fs.unlink(cachePath).catch(() => {});
     });

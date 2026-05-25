@@ -30,7 +30,7 @@ describe('vercel gateway source parser', () => {
         });
         expect(entries).toHaveLength(2);
         expect(entries[0].source).toBe('vercel');
-        expect(entries[0].provider).toBe('vercel-gateway');
+        expect(entries[0].provider).toBe('vercel_gateway');
         const sonnet = entries.find(e => e.canonicalId === 'anthropic/claude-sonnet-4');
         expect(sonnet!.pricing.inputPerMillion).toBe(3.0);
     });

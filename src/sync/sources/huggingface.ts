@@ -66,12 +66,14 @@ export async function fetchHuggingFaceModels(opts: HFFetchOptions): Promise<Dyna
         for (const p of providers) {
             if (p.status !== 'live') continue;
             if (!p.pricing) continue;
+            // HF Inference Providers routes via a single provider entry.
+            // Sub-provider goes into the id using HF's documented `model:provider` syntax.
             out.push({
                 canonicalId: canonical,
-                id: m.id,
-                provider: `huggingface-${p.provider}`,
+                id: `${m.id}:${p.provider}`,
+                provider: 'huggingface',
                 source: 'huggingface',
-                displayName: m.id,
+                displayName: `${m.id} (via ${p.provider})`,
                 contextWindow: p.context_length ?? 0,
                 pricing: { inputPerMillion: p.pricing.input, outputPerMillion: p.pricing.output },
                 syncedAt: now,

@@ -59,7 +59,7 @@ export async function fetchVercelGatewayModels(opts: VercelFetchOptions): Promis
         out.push({
             canonicalId: toCanonicalId(m.id),
             id: m.id,
-            provider: 'vercel-gateway',
+            provider: 'vercel_gateway',
             source: 'vercel',
             displayName: m.id,
             contextWindow: m.context_window ?? 0,

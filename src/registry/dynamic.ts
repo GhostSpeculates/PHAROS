@@ -1,8 +1,11 @@
 /**
  * Runtime cache of synced models.
  *
- * Keyed by (canonicalId, provider, source). Multiple providers can host
- * the same canonical model — each is its own entry.
+ * Keyed by (canonicalId, provider, source, id). The `id` is included
+ * because Hugging Face Inference Providers exposes the same canonical
+ * model via multiple sub-providers under a single provider name —
+ * sub-provider is encoded in the id (e.g. `meta-llama/Llama-3.3-70B-Instruct:together`)
+ * so entries would collide without it.
  */
 
 export type SyncSource = 'direct' | 'huggingface' | 'vercel';
@@ -18,8 +21,8 @@ export interface DynamicEntry {
     syncedAt: number;      // epoch ms
 }
 
-function keyOf(e: { canonicalId: string; provider: string; source: SyncSource }): string {
-    return `${e.canonicalId}::${e.provider}::${e.source}`;
+function keyOf(e: { canonicalId: string; provider: string; source: SyncSource; id: string }): string {
+    return `${e.canonicalId}::${e.provider}::${e.source}::${e.id}`;
 }
 
 export class DynamicRegistry {

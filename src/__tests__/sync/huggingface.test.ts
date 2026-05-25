@@ -34,8 +34,9 @@ describe('huggingface source parser', () => {
             timeoutMs: 5000,
         });
         expect(entries).toHaveLength(3);
-        const llamaTogether = entries.find(e => e.canonicalId === 'meta-llama/Llama-3.3-70B-Instruct' && e.provider === 'huggingface-together');
+        const llamaTogether = entries.find(e => e.canonicalId === 'meta-llama/Llama-3.3-70B-Instruct' && e.id === 'meta-llama/Llama-3.3-70B-Instruct:together');
         expect(llamaTogether).toBeDefined();
+        expect(llamaTogether!.provider).toBe('huggingface');
         expect(llamaTogether!.pricing.inputPerMillion).toBe(0.88);
         expect(llamaTogether!.source).toBe('huggingface');
     });
