@@ -10,6 +10,7 @@ import type { ModelCapability, SpeedTier } from '../registry/models.js';
 
 const VALID_CAPABILITIES: ModelCapability[] = [
     'code', 'math', 'reasoning', 'creative', 'conversation', 'multilingual',
+    'embedding', 'tts', 'stt', 'image', 'video',
 ];
 const VALID_SPEEDS: SpeedTier[] = ['fast', 'medium', 'slow'];
 
@@ -81,11 +82,11 @@ describe('getAllModels', () => {
 // ─── findModel ──────────────────────────────────────────
 
 describe('findModel', () => {
-    it('finds claude-opus by provider and id', () => {
-        const model = findModel('anthropic', 'claude-opus-4-20250514');
+    it('finds claude-sonnet by provider and id', () => {
+        const model = findModel('anthropic', 'claude-sonnet-4-20250514');
         expect(model).toBeDefined();
-        expect(model!.displayName).toBe('Claude Opus 4');
-        expect(model!.speed).toBe('slow');
+        expect(model!.displayName).toBe('Claude Sonnet 4');
+        expect(model!.speed).toBe('medium');
     });
 
     it('finds gpt-4o', () => {
@@ -94,16 +95,14 @@ describe('findModel', () => {
         expect(model!.contextWindow).toBe(128_000);
     });
 
-    it('finds Together AI model', () => {
+    it('returns undefined for together (not in static seed)', () => {
         const model = findModel('together', 'meta-llama/Llama-3.3-70B-Instruct-Turbo');
-        expect(model).toBeDefined();
-        expect(model!.displayName).toContain('Together');
+        expect(model).toBeUndefined();
     });
 
-    it('finds Fireworks AI model', () => {
+    it('returns undefined for fireworks (not in static seed)', () => {
         const model = findModel('fireworks', 'accounts/fireworks/models/llama-v3p3-70b-instruct');
-        expect(model).toBeDefined();
-        expect(model!.displayName).toContain('Fireworks');
+        expect(model).toBeUndefined();
     });
 
     it('returns undefined for unknown provider', () => {
@@ -118,22 +117,20 @@ describe('findModel', () => {
 // ─── findModelsByProvider ───────────────────────────────
 
 describe('findModelsByProvider', () => {
-    it('returns all anthropic models', () => {
+    it('returns anthropic models from static seed', () => {
         const models = findModelsByProvider('anthropic');
-        expect(models.length).toBeGreaterThanOrEqual(2);
+        expect(models.length).toBeGreaterThanOrEqual(1);
         expect(models.every((m) => m.provider === 'anthropic')).toBe(true);
     });
 
-    it('returns all together models', () => {
+    it('returns empty array for together (not in static seed)', () => {
         const models = findModelsByProvider('together');
-        expect(models.length).toBe(3);
-        expect(models.every((m) => m.provider === 'together')).toBe(true);
+        expect(models.length).toBe(0);
     });
 
-    it('returns all fireworks models', () => {
+    it('returns empty array for fireworks (not in static seed)', () => {
         const models = findModelsByProvider('fireworks');
-        expect(models.length).toBe(2);
-        expect(models.every((m) => m.provider === 'fireworks')).toBe(true);
+        expect(models.length).toBe(0);
     });
 
     it('returns empty array for unknown provider', () => {
@@ -144,25 +141,21 @@ describe('findModelsByProvider', () => {
 // ─── findModelsByCapability ─────────────────────────────
 
 describe('findModelsByCapability', () => {
-    it('finds models with code capability', () => {
-        const models = findModelsByCapability('code');
-        expect(models.length).toBeGreaterThan(5);
-        expect(models.every((m) => m.capabilities.includes('code'))).toBe(true);
+    it('finds models with conversation capability (static seed default)', () => {
+        const models = findModelsByCapability('conversation');
+        expect(models.length).toBe(MODEL_REGISTRY.length);
+        expect(models.every((m) => m.capabilities.includes('conversation'))).toBe(true);
     });
 
-    it('finds models with creative capability', () => {
-        const models = findModelsByCapability('creative');
-        expect(models.length).toBeGreaterThan(0);
-        expect(models.every((m) => m.capabilities.includes('creative'))).toBe(true);
+    it('returns empty for code capability (static seed uses conversation only)', () => {
+        expect(findModelsByCapability('code').length).toBe(0);
     });
 
-    it('finds models with multilingual capability', () => {
-        const models = findModelsByCapability('multilingual');
-        expect(models.length).toBeGreaterThan(5);
+    it('returns empty for creative capability (static seed uses conversation only)', () => {
+        expect(findModelsByCapability('creative').length).toBe(0);
     });
 
-    it('reasoning capability includes most models', () => {
-        const models = findModelsByCapability('reasoning');
-        expect(models.length).toBeGreaterThan(10);
+    it('returns empty for multilingual capability (static seed uses conversation only)', () => {
+        expect(findModelsByCapability('multilingual').length).toBe(0);
     });
 });

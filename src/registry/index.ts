@@ -1,50 +1,95 @@
 /**
  * Registry helpers — query model metadata for routing decisions.
  *
- * Provides speed tier and cost lookups so the router can prefer
- * faster providers for simple queries and cheaper ones when
- * multiple host the same-capability model.
+ * Backed by:
+ *   - static seed (always present)
+ *   - dynamic registry (populated by sync; may be empty before first sync)
  */
 
 import { MODEL_REGISTRY, type SpeedTier, type ModelRegistryEntry } from './models.js';
+import { STATIC_SEED } from './static.js';
+import { DynamicRegistry } from './dynamic.js';
 
-/** Speed tier numeric values for sorting (lower = faster) */
-const SPEED_ORDER: Record<SpeedTier, number> = {
-    fast: 0,
-    medium: 1,
-    slow: 2,
-};
+let dynamicRegistry = new DynamicRegistry();
 
-/**
- * Get the speed tier for a provider/model pair.
- */
+/** For tests only — overwrite the live dynamic registry. */
+export function setDynamicRegistryForTesting(reg: DynamicRegistry): void {
+    dynamicRegistry = reg;
+}
+
+/** Production swap of the dynamic registry (after a successful sync). */
+export function setDynamicRegistry(reg: DynamicRegistry): void {
+    dynamicRegistry = reg;
+}
+
+export interface MergedEntry {
+    canonicalId: string;
+    id: string;
+    provider: string;
+    displayName: string;
+    contextWindow: number;
+    pricing: { inputPerMillion: number; outputPerMillion: number };
+    source: 'static' | 'direct' | 'huggingface' | 'vercel';
+}
+
+export function getMergedRegistry(): MergedEntry[] {
+    const out = new Map<string, MergedEntry>();
+
+    // Static first
+    for (const s of STATIC_SEED) {
+        const key = `${s.canonicalId}::${s.provider}`;
+        out.set(key, {
+            canonicalId: s.canonicalId,
+            id: s.id,
+            provider: s.provider,
+            displayName: s.displayName,
+            contextWindow: s.contextWindow,
+            pricing: s.pricing,
+            source: 'static',
+        });
+    }
+
+    // Dynamic shadows static for same (canonicalId, provider)
+    for (const d of dynamicRegistry.listAll()) {
+        const key = `${d.canonicalId}::${d.provider}`;
+        out.set(key, {
+            canonicalId: d.canonicalId,
+            id: d.id,
+            provider: d.provider,
+            displayName: d.displayName,
+            contextWindow: d.contextWindow,
+            pricing: d.pricing,
+            source: d.source,
+        });
+    }
+
+    return Array.from(out.values());
+}
+
+// ─── Existing helpers preserved (now read from merged registry) ───
+
+const SPEED_ORDER: Record<SpeedTier, number> = { fast: 0, medium: 1, slow: 2 };
+
 export function getModelSpeed(provider: string, model: string): SpeedTier | undefined {
     const entry = MODEL_REGISTRY.find(m => m.provider === provider && m.id === model);
     return entry?.speed;
 }
 
-/**
- * Get the total cost per million tokens (input + output average) for sorting.
- * Returns undefined if the model is not in the registry.
- */
 export function getModelCost(provider: string, model: string): number | undefined {
+    // Try merged registry first (real prices)
+    const merged = getMergedRegistry().find(m => m.provider === provider && m.id === model);
+    if (merged) return merged.pricing.inputPerMillion + merged.pricing.outputPerMillion;
+    // Fallback to legacy static MODEL_REGISTRY
     const entry = MODEL_REGISTRY.find(m => m.provider === provider && m.id === model);
     if (!entry) return undefined;
     return entry.pricing.inputPerMillion + entry.pricing.outputPerMillion;
 }
 
-/**
- * Get the numeric speed rank for sorting (0=fast, 1=medium, 2=slow).
- * Unknown models get medium (1) as default.
- */
 export function getSpeedRank(provider: string, model: string): number {
     const speed = getModelSpeed(provider, model);
-    return speed ? SPEED_ORDER[speed] : 1; // default to medium
+    return speed ? SPEED_ORDER[speed] : 1;
 }
 
-/**
- * Get the full registry entry for a provider/model pair.
- */
 export function getRegistryEntry(provider: string, model: string): ModelRegistryEntry | undefined {
     return MODEL_REGISTRY.find(m => m.provider === provider && m.id === model);
 }

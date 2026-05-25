@@ -75,8 +75,9 @@ export function registerWalletRoutes(opts: {
     fastify: FastifyInstance;
     wallet: WalletStore;
     logger: Logger;
+    operatorKey?: string;
 }): void {
-    const { fastify, wallet, logger } = opts;
+    const { fastify, wallet, logger, operatorKey } = opts;
 
     // Per-IP and per-email limiters for the public /wallet/checkout endpoint.
     const CHECKOUT_WINDOW_MS = 3600_000; // 1 hour
@@ -94,7 +95,15 @@ export function registerWalletRoutes(opts: {
 
     // ── GET /v1/credits ─────────────────────────────────────────────────
     // OpenRouter-shape: {data: {total_credits, total_usage}}. Both USD floats.
+    // Operator key (used by king-tut canary) returns zeros — valid shape, no user context.
     fastify.get('/v1/credits', (req, reply) => {
+        if (operatorKey) {
+            const raw = req.headers['authorization'];
+            const m = raw && typeof raw === 'string' ? raw.match(/^Bearer\s+(.+)$/i) : null;
+            if (m && m[1].trim() === operatorKey) {
+                return { data: { total_credits: 0, total_usage: 0 } };
+            }
+        }
         const user = authUser(req);
         if (!user) {
             reply.status(401);

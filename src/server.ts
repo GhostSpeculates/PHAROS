@@ -35,6 +35,39 @@ import { providerSelfTest } from './utils/self-test.js';
 import { ConversationTracker } from './router/conversation-tracker.js';
 import { PerformanceLearningStore } from './learning/index.js';
 import { Phase2Metrics } from './tracking/phase2-metrics.js';
+import { runSync } from './sync/index.js';
+import { fetchHuggingFaceModels } from './sync/sources/huggingface.js';
+import { fetchVercelGatewayModels } from './sync/sources/vercel.js';
+import { fetchDirectProviderModels, type DirectProviderConfig } from './sync/sources/direct.js';
+import { setDynamicRegistry, getMergedRegistry } from './registry/index.js';
+import { DynamicRegistry } from './registry/dynamic.js';
+import { populateTiers } from './sync/tier-populator.js';
+import { startSyncCron } from './sync/cron.js';
+
+/**
+ * Static pricing maps for direct providers that expose /v1/models without
+ * pricing data. Used by the catalog sync to enrich the synced entries.
+ * Pricing is in USD per million tokens.
+ */
+const DIRECT_PROVIDER_CATALOG: Omit<DirectProviderConfig, 'apiKey'>[] = [
+    {
+        name: 'openai',
+        endpoint: 'https://api.openai.com/v1/models',
+        staticPricing: {
+            'gpt-4o':      { inputPerMillion: 2.5,  outputPerMillion: 10.0 },
+            'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.60 },
+            'o3':          { inputPerMillion: 2.0,  outputPerMillion: 8.0 },
+        },
+    },
+    {
+        name: 'groq',
+        endpoint: 'https://api.groq.com/openai/v1/models',
+        staticPricing: {
+            'llama-3.3-70b-versatile': { inputPerMillion: 0.59, outputPerMillion: 0.79 },
+        },
+    },
+    // Anthropic, xAI, Moonshot have no public /v1/models — covered by static seed.
+];
 
 /**
  * Create and configure the Pharos server.
@@ -212,7 +245,7 @@ export async function createServer(config: PharosConfig): Promise<{
 
     // Wave 5 — wallet routes (only if wallet store initialized)
     if (wallet) {
-        registerWalletRoutes({ fastify: app, wallet, logger });
+        registerWalletRoutes({ fastify: app, wallet, logger, operatorKey: config.auth.apiKey });
     }
 
     // Admin routes — operator-only surface for King Tut monitoring agent
@@ -275,6 +308,70 @@ export async function createServer(config: PharosConfig): Promise<{
                     `Server is live on port ${config.server.port}\nProviders: ${availableProviders.join(', ') || 'none'}`,
                     'info',
                 );
+            }
+
+            // ─── Slice A — universal catalog sync ───
+            const performSync = async (): Promise<void> => {
+                if (!config.sync?.enabled) return;
+
+                const hfKey = process.env.HUGGINGFACE_API_KEY ?? '';
+                const vercelKey = process.env.VERCEL_AI_GATEWAY_KEY ?? '';
+
+                const result = await runSync({
+                    cachePath: config.sync.cacheFile,
+                    sources: {
+                        huggingface: async () =>
+                            hfKey && config.sync!.sources.huggingface.enabled && config.sync!.sources.huggingface.endpoint
+                                ? fetchHuggingFaceModels({ endpoint: config.sync!.sources.huggingface.endpoint, apiKey: hfKey })
+                                : [],
+                        vercel: async () =>
+                            vercelKey && config.sync!.sources.vercel.enabled && config.sync!.sources.vercel.endpoint
+                                ? fetchVercelGatewayModels({ endpoint: config.sync!.sources.vercel.endpoint, apiKey: vercelKey })
+                                : [],
+                        direct: async () =>
+                            config.sync!.sources.direct.enabled
+                                ? fetchDirectProviderModels({
+                                    providers: DIRECT_PROVIDER_CATALOG.map(p => ({
+                                        ...p,
+                                        apiKey: process.env[`${p.name.toUpperCase()}_API_KEY`] ?? '',
+                                    })),
+                                })
+                                : [],
+                    },
+                });
+
+                const reg = new DynamicRegistry();
+                reg.replaceAll(result.entries);
+                setDynamicRegistry(reg);
+
+                if (config.tierPriceBoundaries) {
+                    const populated = populateTiers(getMergedRegistry(), config.tierPriceBoundaries);
+                    for (const name of Object.keys(populated) as Array<keyof typeof populated>) {
+                        if (populated[name].models.length > 0 && config.tiers[name]) {
+                            config.tiers[name].models = populated[name].models;
+                        }
+                    }
+                }
+
+                logger.info(
+                    {
+                        total: result.entries.length,
+                        perSource: result.perSource,
+                        errors: result.errors,
+                        usedCacheFallback: result.usedCacheFallback,
+                    },
+                    'catalog sync complete',
+                );
+            };
+
+            // Kick off the initial sync without blocking boot — server is already listening.
+            void performSync().catch(err => logger.error({ err }, 'initial catalog sync failed'));
+
+            if (config.sync?.enabled) {
+                startSyncCron({
+                    intervalMs: config.sync.intervalHours * 60 * 60 * 1000,
+                    job: performSync,
+                });
             }
         },
         stop: async () => {
