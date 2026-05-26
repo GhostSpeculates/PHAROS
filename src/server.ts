@@ -125,9 +125,9 @@ export async function createServer(config: PharosConfig): Promise<{
     // R1-refined schema (INTEGER cents, idempotent stripe events, multi-tenant placeholders).
     let wallet: WalletStore | null = null;
     if (config.tracking.enabled) {
-        // TODO(Task 9): wire Postgres sql client here. For now, WalletStore is disabled until migration completes.
-        // wallet = new WalletStore({ sql, logger });
-        logger.info(`Wallet: enabled (Phase 8.2 — schema initialized at ${config.tracking.dbPath})`);
+        const { getSql } = await import('./db/index.js');
+        wallet = new WalletStore({ sql: getSql(), logger });
+        logger.info(`Wallet: enabled (Phase 8.2 — Postgres)`);
     }
 
     // ─── Initialize Performance Learning ───
