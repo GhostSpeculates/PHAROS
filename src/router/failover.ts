@@ -29,7 +29,7 @@ export interface ModelCandidate {
  * 2. If all fail, escalate to the next tier up
  * 3. If all tiers exhausted, throw an error
  */
-export function findAvailableModel(
+export async function findAvailableModel(
     primaryTier: TierName,
     config: PharosConfig,
     registry: ProviderRegistry,
@@ -37,14 +37,14 @@ export function findAvailableModel(
     taskType?: string,
     affinityMap?: Record<string, string[]>,
     learningStore?: PerformanceLearningStore | null,
-): FailoverResult {
+): Promise<FailoverResult> {
     // Build candidates with affinity sorting, then registry-aware sorting, then performance sorting
     const candidates = getCandidateModels(primaryTier, config, registry);
     const affinitySorted = (taskType && affinityMap)
         ? sortByAffinity(candidates, taskType, affinityMap)
         : candidates;
     const registrySorted = sortByRegistry(affinitySorted, primaryTier);
-    const sorted = sortByPerformance(registrySorted, taskType, learningStore);
+    const sorted = await sortByPerformance(registrySorted, taskType, learningStore);
 
     // Try each candidate in order
     if (sorted.length > 0) {
@@ -196,18 +196,18 @@ export function sortByRegistry(
  *
  * Tier boundaries are never crossed.
  */
-export function sortByPerformance(
+export async function sortByPerformance(
     candidates: ModelCandidate[],
     taskType?: string,
     learningStore?: PerformanceLearningStore | null,
-): ModelCandidate[] {
+): Promise<ModelCandidate[]> {
     if (!learningStore || !taskType || candidates.length <= 1) {
         return candidates;
     }
 
     try {
         // Fetch all weights for this task type in one query
-        const weights = learningStore.getWeightsForTaskType(taskType);
+        const weights = await learningStore.getWeightsForTaskType(taskType);
         if (weights.length === 0) return candidates;
 
         // Build lookup map: "provider/model" → weight

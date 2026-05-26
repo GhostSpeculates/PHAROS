@@ -56,7 +56,7 @@ export class ModelRouter {
      * Route based on classification result.
      * Uses task-type affinity to prefer the best model for the task.
      */
-    route(classification: ClassificationResult): RoutingDecision {
+    async route(classification: ClassificationResult): Promise<RoutingDecision> {
         const tier = resolveTier(classification.score, this.config);
 
         this.logger.debug(
@@ -68,7 +68,7 @@ export class ModelRouter {
             'Routing decision',
         );
 
-        const result = findAvailableModel(
+        const result = await findAvailableModel(
             tier, this.config, this.registry, this.logger,
             classification.type, this.affinityMap, this.learningStore,
         );
@@ -127,7 +127,7 @@ export class ModelRouter {
      * Get all candidate models in retry order for a classification.
      * Uses task-type affinity to prefer the best model for the task.
      */
-    getCandidates(classification: ClassificationResult): ModelCandidate[] {
+    async getCandidates(classification: ClassificationResult): Promise<ModelCandidate[]> {
         const tier = resolveTier(classification.score, this.config);
         const candidates = getCandidateModels(tier, this.config, this.registry);
         const affinitySorted = sortByAffinity(candidates, classification.type, this.affinityMap);

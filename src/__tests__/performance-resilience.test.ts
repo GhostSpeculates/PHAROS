@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import postgres from 'postgres';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { PerformanceLearningStore } from '../learning/performance-store.js';
 import { sortByPerformance } from '../router/failover.js';
 import type { ModelCandidate } from '../router/failover.js';
 import type { PerformanceLearningConfig } from '../learning/performance-store.js';
 import type { Logger } from '../utils/logger.js';
+import { truncateAll } from './_helpers/test-db.js';
 
 function makeLogger(): Logger {
     return {
@@ -30,117 +31,116 @@ function makeConfig(overrides?: Partial<PerformanceLearningConfig>): Performance
 }
 
 describe('Performance Learning — Error Resilience', () => {
-    // ─── Closed database resilience ───
+    let sql: ReturnType<typeof postgres>;
 
-    describe('closed database', () => {
-        it('getWeight returns neutral on closed DB', () => {
-            const db = new Database(':memory:');
-            const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-            db.close();
-            const w = store.getWeight('groq', 'llama', 'code');
+    beforeAll(() => {
+        sql = postgres(process.env.DATABASE_URL!);
+    });
+
+    afterAll(async () => {
+        await sql.end();
+    });
+
+    // ─── DB error resilience (bad connection) ───
+
+    describe('broken database', () => {
+        let badSql: ReturnType<typeof postgres>;
+
+        beforeEach(() => {
+            badSql = postgres('postgresql://bad:bad@localhost:9999/bad', { max: 1, connect_timeout: 1 });
+        });
+
+        afterEach(async () => {
+            await badSql.end({ timeout: 1 }).catch(() => {});
+        });
+
+        it('getWeight returns neutral on broken DB', async () => {
+            const store = new PerformanceLearningStore(badSql, makeLogger(), makeConfig());
+            const w = await store.getWeight('groq', 'llama', 'code');
             expect(w.weight).toBe(1.0);
             expect(w.sampleCount).toBe(0);
         });
 
-        it('recordOutcome does not throw on closed DB', () => {
-            const db = new Database(':memory:');
-            const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-            db.close();
-            expect(() => store.recordOutcome('groq', 'llama', 'code', true, 500)).not.toThrow();
+        it('recordOutcome does not throw on broken DB', async () => {
+            const store = new PerformanceLearningStore(badSql, makeLogger(), makeConfig());
+            await expect(store.recordOutcome('groq', 'llama', 'code', true, 500)).resolves.toBeUndefined();
         });
 
-        it('getWeightsForTaskType returns empty on closed DB', () => {
-            const db = new Database(':memory:');
-            const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-            db.close();
-            expect(store.getWeightsForTaskType('code')).toEqual([]);
+        it('getWeightsForTaskType returns empty on broken DB', async () => {
+            const store = new PerformanceLearningStore(badSql, makeLogger(), makeConfig());
+            expect(await store.getWeightsForTaskType('code')).toEqual([]);
         });
 
-        it('applyDecay does not throw on closed DB', () => {
-            const db = new Database(':memory:');
-            const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-            db.close();
-            expect(() => store.applyDecay()).not.toThrow();
+        it('applyDecay does not throw on broken DB', async () => {
+            const store = new PerformanceLearningStore(badSql, makeLogger(), makeConfig());
+            await expect(store.applyDecay()).resolves.toBeUndefined();
         });
 
-        it('reset does not throw on closed DB', () => {
-            const db = new Database(':memory:');
-            const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-            db.close();
-            expect(() => store.reset()).not.toThrow();
+        it('reset does not throw on broken DB', async () => {
+            const store = new PerformanceLearningStore(badSql, makeLogger(), makeConfig());
+            await expect(store.reset()).resolves.toBeUndefined();
         });
 
-        it('getTrackedCount returns 0 on closed DB', () => {
-            const db = new Database(':memory:');
-            const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-            db.close();
-            expect(store.getTrackedCount()).toBe(0);
+        it('getTrackedCount returns 0 on broken DB', async () => {
+            const store = new PerformanceLearningStore(badSql, makeLogger(), makeConfig());
+            expect(await store.getTrackedCount()).toBe(0);
         });
 
-        it('getTopPerformers returns empty on closed DB', () => {
-            const db = new Database(':memory:');
-            const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-            db.close();
-            expect(store.getTopPerformers()).toEqual([]);
+        it('getTopPerformers returns empty on broken DB', async () => {
+            const store = new PerformanceLearningStore(badSql, makeLogger(), makeConfig());
+            expect(await store.getTopPerformers()).toEqual([]);
         });
 
-        it('getWorstPerformers returns empty on closed DB', () => {
-            const db = new Database(':memory:');
-            const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-            db.close();
-            expect(store.getWorstPerformers()).toEqual([]);
+        it('getWorstPerformers returns empty on broken DB', async () => {
+            const store = new PerformanceLearningStore(badSql, makeLogger(), makeConfig());
+            expect(await store.getWorstPerformers()).toEqual([]);
         });
     });
 
     // ─── Weight computation edge cases ───
 
     describe('weight computation edge cases', () => {
-        let db: Database.Database;
         let store: PerformanceLearningStore;
 
-        beforeEach(() => {
-            db = new Database(':memory:');
-            store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
+        beforeEach(async () => {
+            await truncateAll(sql);
+            store = new PerformanceLearningStore(sql, makeLogger(), makeConfig());
         });
 
-        afterEach(() => {
-            db.close();
-        });
-
-        it('zero successes produces weight clamped to minWeight', () => {
+        it('zero successes produces weight clamped to minWeight', async () => {
             for (let i = 0; i < 50; i++) {
-                store.recordOutcome('bad', 'model', 'code', false, 0);
+                await store.recordOutcome('bad', 'model', 'code', false, 0);
             }
             // Add 1 success so weight isn't purely from zero-division
-            store.recordOutcome('bad', 'model', 'code', true, 10000);
-            const w = store.getWeight('bad', 'model', 'code');
+            await store.recordOutcome('bad', 'model', 'code', true, 10000);
+            const w = await store.getWeight('bad', 'model', 'code');
             expect(w.weight).toBeGreaterThanOrEqual(0.3);
             expect(Number.isFinite(w.weight)).toBe(true);
         });
 
-        it('very high latency still produces finite weight', () => {
+        it('very high latency still produces finite weight', async () => {
             for (let i = 0; i < 20; i++) {
-                store.recordOutcome('slow', 'model', 'code', true, 999_999);
+                await store.recordOutcome('slow', 'model', 'code', true, 999_999);
             }
-            const w = store.getWeight('slow', 'model', 'code');
+            const w = await store.getWeight('slow', 'model', 'code');
             expect(Number.isFinite(w.weight)).toBe(true);
             expect(w.weight).toBeGreaterThan(0);
         });
 
-        it('zero latency still produces finite weight', () => {
+        it('zero latency still produces finite weight', async () => {
             for (let i = 0; i < 20; i++) {
-                store.recordOutcome('fast', 'model', 'code', true, 0);
+                await store.recordOutcome('fast', 'model', 'code', true, 0);
             }
-            const w = store.getWeight('fast', 'model', 'code');
+            const w = await store.getWeight('fast', 'model', 'code');
             expect(Number.isFinite(w.weight)).toBe(true);
         });
 
-        it('weight stays within bounds even with extreme data', () => {
+        it('weight stays within bounds even with extreme data', async () => {
             // 100% success, near-zero latency
             for (let i = 0; i < 1000; i++) {
-                store.recordOutcome('perfect', 'model', 'code', true, 1);
+                await store.recordOutcome('perfect', 'model', 'code', true, 1);
             }
-            const w = store.getWeight('perfect', 'model', 'code');
+            const w = await store.getWeight('perfect', 'model', 'code');
             expect(w.weight).toBeLessThanOrEqual(2.0);
             expect(w.weight).toBeGreaterThanOrEqual(0.3);
         });
@@ -149,31 +149,32 @@ describe('Performance Learning — Error Resilience', () => {
     // ─── sortByPerformance resilience ───
 
     describe('sortByPerformance resilience', () => {
-        it('returns unchanged candidates when store throws', () => {
-            const db = new Database(':memory:');
-            const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-            db.close(); // Force errors
+        beforeEach(async () => {
+            await truncateAll(sql);
+        });
+
+        it('returns unchanged candidates when store throws', async () => {
+            const badSql = postgres('postgresql://bad:bad@localhost:9999/bad', { max: 1, connect_timeout: 1 });
+            const store = new PerformanceLearningStore(badSql, makeLogger(), makeConfig());
 
             const candidates: ModelCandidate[] = [
                 { provider: 'groq', model: 'llama', tier: 'free' },
                 { provider: 'google', model: 'gemini', tier: 'free' },
             ];
 
-            const result = sortByPerformance(candidates, 'code', store);
+            const result = await sortByPerformance(candidates, 'code', store);
             expect(result).toEqual(candidates);
+            await badSql.end({ timeout: 1 }).catch(() => {});
         });
 
-        it('handles empty task type gracefully', () => {
-            const db = new Database(':memory:');
-            const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-
+        it('handles empty task type gracefully', async () => {
+            const store = new PerformanceLearningStore(sql, makeLogger(), makeConfig());
             const candidates: ModelCandidate[] = [
                 { provider: 'groq', model: 'llama', tier: 'free' },
             ];
 
-            const result = sortByPerformance(candidates, '', store);
+            const result = await sortByPerformance(candidates, '', store);
             expect(result).toEqual(candidates);
-            db.close();
         });
     });
 });

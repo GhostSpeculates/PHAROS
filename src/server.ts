@@ -133,12 +133,10 @@ export async function createServer(config: PharosConfig): Promise<{
     // ─── Initialize Performance Learning ───
     let learningStore: PerformanceLearningStore | null = null;
     if (config.performanceLearning?.enabled && tracker) {
-        const Database = (await import('better-sqlite3')).default;
-        const learningDb = new Database(config.tracking.dbPath);
-        learningDb.pragma('journal_mode = WAL');
-        learningStore = new PerformanceLearningStore(learningDb, logger, config.performanceLearning);
-        learningStore.applyDecay();
-        logger.info(`Performance learning: enabled (${learningStore.getTrackedCount()} models tracked)`);
+        const { getSql } = await import('./db/index.js');
+        learningStore = new PerformanceLearningStore(getSql(), logger, config.performanceLearning);
+        await learningStore.applyDecay();
+        logger.info(`Performance learning: enabled (${await learningStore.getTrackedCount()} models tracked)`);
     }
 
     // ─── Initialize Phase 2 Metrics ───

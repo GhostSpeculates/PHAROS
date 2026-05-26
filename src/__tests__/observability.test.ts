@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import postgres from 'postgres';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { PerformanceLearningStore } from '../learning/performance-store.js';
 import type { PerformanceLearningConfig } from '../learning/performance-store.js';
 import type { Logger } from '../utils/logger.js';
+import { truncateAll } from './_helpers/test-db.js';
 
 function makeLogger(): Logger {
     return {
@@ -27,87 +28,80 @@ function makeConfig(): PerformanceLearningConfig {
 }
 
 describe('Observability — Feedback Loop', () => {
-    it('recordOutcome tracks success correctly', () => {
-        const db = new Database(':memory:');
-        const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
+    let sql: ReturnType<typeof postgres>;
+    let store: PerformanceLearningStore;
 
-        store.recordOutcome('groq', 'llama', 'code', true, 500);
-        const w = store.getWeight('groq', 'llama', 'code');
+    beforeAll(() => {
+        sql = postgres(process.env.DATABASE_URL!);
+    });
+
+    afterAll(async () => {
+        await sql.end();
+    });
+
+    beforeEach(async () => {
+        await truncateAll(sql);
+        store = new PerformanceLearningStore(sql, makeLogger(), makeConfig());
+    });
+
+    it('recordOutcome tracks success correctly', async () => {
+        await store.recordOutcome('groq', 'llama', 'code', true, 500);
+        const w = await store.getWeight('groq', 'llama', 'code');
 
         expect(w.sampleCount).toBe(1);
         expect(w.successRate).toBe(1.0);
         expect(w.avgLatencyMs).toBe(500);
-        db.close();
     });
 
-    it('recordOutcome tracks failure correctly', () => {
-        const db = new Database(':memory:');
-        const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-
-        store.recordOutcome('groq', 'llama', 'code', false, 0);
-        const w = store.getWeight('groq', 'llama', 'code');
+    it('recordOutcome tracks failure correctly', async () => {
+        await store.recordOutcome('groq', 'llama', 'code', false, 0);
+        const w = await store.getWeight('groq', 'llama', 'code');
 
         expect(w.sampleCount).toBe(1);
         expect(w.successRate).toBe(0);
-        db.close();
     });
 
-    it('feedback loop: success then failure produces correct stats', () => {
-        const db = new Database(':memory:');
-        const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
+    it('feedback loop: success then failure produces correct stats', async () => {
+        await store.recordOutcome('groq', 'llama', 'code', true, 1000);
+        await store.recordOutcome('groq', 'llama', 'code', true, 500);
+        await store.recordOutcome('groq', 'llama', 'code', false, 0);
 
-        store.recordOutcome('groq', 'llama', 'code', true, 1000);
-        store.recordOutcome('groq', 'llama', 'code', true, 500);
-        store.recordOutcome('groq', 'llama', 'code', false, 0);
-
-        const w = store.getWeight('groq', 'llama', 'code');
+        const w = await store.getWeight('groq', 'llama', 'code');
         expect(w.sampleCount).toBe(3);
         expect(w.successRate).toBeCloseTo(2 / 3, 2);
         expect(w.avgLatencyMs).toBe(750); // (1000 + 500) / 2
-        db.close();
     });
 
-    it('multiple providers accumulate independently', () => {
-        const db = new Database(':memory:');
-        const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
+    it('multiple providers accumulate independently', async () => {
+        await store.recordOutcome('groq', 'llama', 'code', true, 500);
+        await store.recordOutcome('openai', 'gpt-4o', 'code', false, 0);
+        await store.recordOutcome('anthropic', 'claude', 'code', true, 1000);
 
-        store.recordOutcome('groq', 'llama', 'code', true, 500);
-        store.recordOutcome('openai', 'gpt-4o', 'code', false, 0);
-        store.recordOutcome('anthropic', 'claude', 'code', true, 1000);
-
-        expect(store.getWeight('groq', 'llama', 'code').successRate).toBe(1.0);
-        expect(store.getWeight('openai', 'gpt-4o', 'code').successRate).toBe(0);
-        expect(store.getWeight('anthropic', 'claude', 'code').successRate).toBe(1.0);
-        expect(store.getTrackedCount()).toBe(3);
-        db.close();
+        expect((await store.getWeight('groq', 'llama', 'code')).successRate).toBe(1.0);
+        expect((await store.getWeight('openai', 'gpt-4o', 'code')).successRate).toBe(0);
+        expect((await store.getWeight('anthropic', 'claude', 'code')).successRate).toBe(1.0);
+        expect(await store.getTrackedCount()).toBe(3);
     });
 
-    it('task type isolation: same provider, different task types', () => {
-        const db = new Database(':memory:');
-        const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
+    it('task type isolation: same provider, different task types', async () => {
+        await store.recordOutcome('groq', 'llama', 'code', true, 500);
+        await store.recordOutcome('groq', 'llama', 'math', false, 0);
 
-        store.recordOutcome('groq', 'llama', 'code', true, 500);
-        store.recordOutcome('groq', 'llama', 'math', false, 0);
-
-        expect(store.getWeight('groq', 'llama', 'code').successRate).toBe(1.0);
-        expect(store.getWeight('groq', 'llama', 'math').successRate).toBe(0);
-        db.close();
+        expect((await store.getWeight('groq', 'llama', 'code')).successRate).toBe(1.0);
+        expect((await store.getWeight('groq', 'llama', 'math')).successRate).toBe(0);
     });
 
-    it('getWeightsForTaskType returns correct summary for stats endpoint', () => {
-        const db = new Database(':memory:');
-        const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-
+    it('getWeightsForTaskType returns correct summary for stats endpoint', async () => {
         // Simulate several providers handling code tasks
         for (let i = 0; i < 10; i++) {
-            store.recordOutcome('groq', 'llama', 'code', true, 500);
+            await store.recordOutcome('groq', 'llama', 'code', true, 500);
         }
         for (let i = 0; i < 5; i++) {
-            store.recordOutcome('openai', 'gpt-4o', 'code', true, 1000);
-            store.recordOutcome('openai', 'gpt-4o', 'code', false, 0);
+            await store.recordOutcome('openai', 'gpt-4o', 'code', true, 1000);
+            await store.recordOutcome('openai', 'gpt-4o', 'code', false, 0);
         }
 
-        const weights = store.getWeightsForTaskType('code');
+        const weights = await store.getWeightsForTaskType('code');
         expect(weights).toHaveLength(2);
 
         const groqW = weights.find(w => w.provider === 'groq');
@@ -116,85 +110,70 @@ describe('Observability — Feedback Loop', () => {
         expect(groqW?.successRate).toBe(1.0);
         expect(openaiW?.successRate).toBeCloseTo(0.5, 2);
         expect(groqW?.weight).toBeGreaterThan(openaiW!.weight);
-        db.close();
     });
 
-    it('top and worst performers reflect real outcomes', () => {
-        const db = new Database(':memory:');
-        const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-
+    it('top and worst performers reflect real outcomes', async () => {
         // Perfect performer
         for (let i = 0; i < 20; i++) {
-            store.recordOutcome('anthropic', 'claude', 'reasoning', true, 800);
+            await store.recordOutcome('anthropic', 'claude', 'reasoning', true, 800);
         }
         // Bad performer
         for (let i = 0; i < 18; i++) {
-            store.recordOutcome('groq', 'llama', 'reasoning', false, 0);
+            await store.recordOutcome('groq', 'llama', 'reasoning', false, 0);
         }
-        store.recordOutcome('groq', 'llama', 'reasoning', true, 5000);
-        store.recordOutcome('groq', 'llama', 'reasoning', true, 5000);
+        await store.recordOutcome('groq', 'llama', 'reasoning', true, 5000);
+        await store.recordOutcome('groq', 'llama', 'reasoning', true, 5000);
 
-        const top = store.getTopPerformers(1);
+        const top = await store.getTopPerformers(1);
         expect(top[0].provider).toBe('anthropic');
         expect(top[0].successRate).toBe(1.0);
 
-        const worst = store.getWorstPerformers(1);
+        const worst = await store.getWorstPerformers(1);
         expect(worst[0].provider).toBe('groq');
         expect(worst[0].successRate).toBe(0.1);
-        db.close();
     });
 
-    it('decay reduces influence of historical data', () => {
-        const db = new Database(':memory:');
-        const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-
+    it('decay reduces influence of historical data', async () => {
         // Old data: model was bad
         for (let i = 0; i < 100; i++) {
-            store.recordOutcome('groq', 'llama', 'code', false, 0);
+            await store.recordOutcome('groq', 'llama', 'code', false, 0);
         }
 
         // Apply decay (simulating a restart)
-        store.applyDecay(0.5); // 100 errors → 50
+        await store.applyDecay(0.5); // 100 errors → 50
 
         // New data: model improved
         for (let i = 0; i < 50; i++) {
-            store.recordOutcome('groq', 'llama', 'code', true, 500);
+            await store.recordOutcome('groq', 'llama', 'code', true, 500);
         }
 
-        const w = store.getWeight('groq', 'llama', 'code');
+        const w = await store.getWeight('groq', 'llama', 'code');
         // 50 successes + 50 errors = 50% success rate
         expect(w.successRate).toBe(0.5);
-        db.close();
     });
 
-    it('null learning store does not cause errors in recording path', () => {
+    it('null learning store does not cause errors in recording path', async () => {
         // Simulates the gateway code path where learningStore is null
-        const store = null as PerformanceLearningStore | null;
-        expect(() => store?.recordOutcome('groq', 'llama', 'code', true, 500)).not.toThrow();
+        const nullStore = null as PerformanceLearningStore | null;
+        // optional chaining on null returns undefined synchronously — no throw, no rejection
+        const result = nullStore?.recordOutcome('groq', 'llama', 'code', true, 500);
+        expect(result).toBeUndefined();
     });
 
-    it('startup validation: decay on fresh database is a no-op', () => {
-        const db = new Database(':memory:');
-        const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-
-        // Should not throw on empty database
-        expect(() => store.applyDecay()).not.toThrow();
-        expect(store.getTrackedCount()).toBe(0);
-        db.close();
+    it('startup validation: decay on fresh database is a no-op', async () => {
+        // Should not throw on empty table
+        await expect(store.applyDecay()).resolves.toBeUndefined();
+        expect(await store.getTrackedCount()).toBe(0);
     });
 
-    it('reset clears all data for admin escape hatch', () => {
-        const db = new Database(':memory:');
-        const store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
-
+    it('reset clears all data for admin escape hatch', async () => {
         for (let i = 0; i < 10; i++) {
-            store.recordOutcome('groq', 'llama', 'code', true, 500);
+            await store.recordOutcome('groq', 'llama', 'code', true, 500);
         }
-        expect(store.getTrackedCount()).toBe(1);
+        expect(await store.getTrackedCount()).toBe(1);
 
-        store.reset();
-        expect(store.getTrackedCount()).toBe(0);
-        expect(store.getWeight('groq', 'llama', 'code').weight).toBe(1.0);
-        db.close();
+        await store.reset();
+        expect(await store.getTrackedCount()).toBe(0);
+        expect((await store.getWeight('groq', 'llama', 'code')).weight).toBe(1.0);
     });
 });

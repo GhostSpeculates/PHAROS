@@ -201,14 +201,14 @@ export function registerMessagesRoutes(
             if (directModel) {
                 routing = router.routeDirect(directModel.provider, directModel.model, classification);
             } else {
-                routing = router.route(classification);
+                routing = await router.route(classification);
                 if (conversationId && conversationTracker && config.conversation?.enabled) {
                     const floor = conversationTracker.getTierFloor(conversationId);
                     if (floor) {
                         const elevatedTier = applyTierFloor(routing.tier as TierName, floor);
                         if (elevatedTier !== routing.tier) {
                             const elevatedScore = config.tiers[elevatedTier].scoreRange[0];
-                            routing = router.route({ ...classification, score: elevatedScore });
+                            routing = await router.route({ ...classification, score: elevatedScore });
                             conversationTierFloor = floor;
                         }
                     }
@@ -246,7 +246,7 @@ export function registerMessagesRoutes(
 
             const candidates = directModel
                 ? [{ provider: routing.provider, model: routing.model, tier: routing.tier }]
-                : router.getCandidates(classification);
+                : await router.getCandidates(classification);
 
             if (candidates.length === 0) {
                 throw new Error('No available providers found');

@@ -91,9 +91,9 @@ describe('findAvailableModel', () => {
         vi.clearAllMocks();
     });
 
-    it('returns the first available model in the primary tier', () => {
+    it('returns the first available model in the primary tier', async () => {
         const registry = makeRegistry({ groq: true, google: true, anthropic: true, deepseek: true });
-        const result = findAvailableModel('free', config, registry, logger);
+        const result = await findAvailableModel('free', config, registry, logger);
 
         // With real merged-registry pricing, google Gemini Flash (0.375/M) is cheaper
         // than groq Llama (1.38/M), so sortByRegistry puts google first in the free tier.
@@ -106,9 +106,9 @@ describe('findAvailableModel', () => {
         expect(result.failedProviders).toEqual(['groq/llama-3.3-70b-versatile']);
     });
 
-    it('falls over to second model in tier when first is down', () => {
+    it('falls over to second model in tier when first is down', async () => {
         const registry = makeRegistry({ groq: false, google: true });
-        const result = findAvailableModel('free', config, registry, logger);
+        const result = await findAvailableModel('free', config, registry, logger);
 
         expect(result.provider).toBe('google');
         expect(result.model).toBe('gemini-2.5-flash');
@@ -117,52 +117,52 @@ describe('findAvailableModel', () => {
         expect(result.attempts).toBe(1);
     });
 
-    it('escalates to a higher tier when all models in primary tier are down', () => {
+    it('escalates to a higher tier when all models in primary tier are down', async () => {
         // Free tier: groq + google both down → should escalate to economical
         const registry = makeRegistry({ groq: false, google: false, deepseek: true });
-        const result = findAvailableModel('free', config, registry, logger);
+        const result = await findAvailableModel('free', config, registry, logger);
 
         expect(result.tier).toBe('economical');
         expect(result.provider).toBe('deepseek');
     });
 
-    it('escalates from premium to frontier when premium providers are down', () => {
+    it('escalates from premium to frontier when premium providers are down', async () => {
         const registry = makeRegistry({ anthropic: true, openai: false });
         // Start from premium — first model is anthropic (available), so it should work
-        const result = findAvailableModel('premium', config, registry, logger);
+        const result = await findAvailableModel('premium', config, registry, logger);
         expect(result.provider).toBe('anthropic');
         expect(result.tier).toBe('premium');
     });
 
-    it('tries lower tiers as last resort', () => {
+    it('tries lower tiers as last resort', async () => {
         // Starting from frontier, only google (free tier) is available
         const registry = makeRegistry({ google: true });
-        const result = findAvailableModel('frontier', config, registry, logger);
+        const result = await findAvailableModel('frontier', config, registry, logger);
 
         expect(result.provider).toBe('google');
         expect(result.tier).toBe('free');
     });
 
-    it('throws when all providers are down', () => {
+    it('throws when all providers are down', async () => {
         const registry = makeRegistry({});
-        expect(() => findAvailableModel('premium', config, registry, logger)).toThrow(
+        await expect(findAvailableModel('premium', config, registry, logger)).rejects.toThrow(
             /No available providers found/,
         );
     });
 
-    it('finds available provider even when many others are down', () => {
+    it('finds available provider even when many others are down', async () => {
         // Only anthropic is available — should find it in premium tier
         const registry = makeRegistry({ anthropic: true });
-        const result = findAvailableModel('free', config, registry, logger);
+        const result = await findAvailableModel('free', config, registry, logger);
 
         expect(result.provider).toBe('anthropic');
         // getCandidateModels pre-filters, so first healthy candidate is returned
         expect(result.attempts).toBe(1);
     });
 
-    it('logs tier escalation when failover to different tier', () => {
+    it('logs tier escalation when failover to different tier', async () => {
         const registry = makeRegistry({ groq: false, google: false, deepseek: true });
-        findAvailableModel('free', config, registry, logger);
+        await findAvailableModel('free', config, registry, logger);
 
         expect(logger.info).toHaveBeenCalledWith(
             expect.objectContaining({ from: 'free', to: 'economical' }),
@@ -170,21 +170,21 @@ describe('findAvailableModel', () => {
         );
     });
 
-    it('handles unknown tier gracefully via getTierFailoverOrder guard', () => {
+    it('handles unknown tier gracefully via getTierFailoverOrder guard', async () => {
         const registry = makeRegistry({ anthropic: true });
         // 'unknown' is not a valid tier, getTierFailoverOrder returns default order
-        const result = findAvailableModel('unknown' as TierName, config, registry, logger);
+        const result = await findAvailableModel('unknown' as TierName, config, registry, logger);
         expect(result.provider).toBe('anthropic');
     });
 
-    it('skips tiers not in config without crashing', () => {
+    it('skips tiers not in config without crashing', async () => {
         // Config only has free and premium
         const sparseConfig = makeConfig();
         delete (sparseConfig.tiers as any).economical;
         delete (sparseConfig.tiers as any).frontier;
 
         const registry = makeRegistry({ groq: false, google: false, anthropic: true });
-        const result = findAvailableModel('free', sparseConfig, registry, logger);
+        const result = await findAvailableModel('free', sparseConfig, registry, logger);
         expect(result.provider).toBe('anthropic');
         expect(result.tier).toBe('premium');
     });
