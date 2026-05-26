@@ -1,4 +1,5 @@
 import { loadConfig } from './config/index.js';
+import { resetSql } from './db/index.js';
 import { createServer } from './server.js';
 
 /**
@@ -33,6 +34,7 @@ async function main() {
             shuttingDown = true;
             server.logger.info(`Received ${signal}, shutting down...`);
             await server.stop();
+            await resetSql();
             process.exit(0);
         };
 
