@@ -99,7 +99,7 @@ describe('admin routes', () => {
         await truncateAll(sql);
         const logger = createLogger('error', false);
         wallet = new WalletStore({ sql, logger });
-        tracker = new TrackingStore(':memory:', logger);
+        tracker = new TrackingStore({ sql, logger });
         app = await buildApp(wallet, tracker);
     });
 
@@ -466,7 +466,7 @@ describe('admin routes', () => {
 
             // Separate wallet sharing the same sql connection
             const frozenWallet = new WalletStore({ sql, logger });
-            const frozenTracker = new TrackingStore(':memory:', logger);
+            const frozenTracker = new TrackingStore({ sql, logger });
             const userId = await frozenWallet.createUserLegacy({ email: 'frozen@test.com', rawApiKey: rawKey });
 
             // Give them credits so the 402 path doesn't fire first

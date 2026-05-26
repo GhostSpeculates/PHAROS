@@ -114,7 +114,7 @@ export function registerMessagesRoutes(
         if (tracker) {
             const { dailyLimit, monthlyLimit } = config.spending;
             if (dailyLimit !== null) {
-                const dailySpend = tracker.getDailySpend();
+                const dailySpend = await tracker.getDailySpend();
                 if (dailySpend >= dailyLimit) {
                     sendAlert(
                         'Daily spending limit reached',
@@ -140,7 +140,7 @@ export function registerMessagesRoutes(
                 }
             }
             if (monthlyLimit !== null) {
-                const monthlySpend = tracker.getMonthlySpend();
+                const monthlySpend = await tracker.getMonthlySpend();
                 if (monthlySpend >= monthlyLimit) {
                     sendAlert(
                         'Monthly spending limit reached',
@@ -385,6 +385,7 @@ export function registerMessagesRoutes(
                                 getMessagePreview(anthropicBody),
                                 undefined,
                                 { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount },
+                                logger,
                             );
                             learningStore?.recordOutcome(
                                 candidate.provider,
@@ -504,6 +505,7 @@ export function registerMessagesRoutes(
                 getMessagePreview(anthropicBody),
                 undefined,
                 { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount },
+                logger,
             );
             const providerLatencyMs = Date.now() - requestStartTime - (classification.latencyMs ?? 0);
             learningStore?.recordOutcome(usedProvider, usedModel, classification.type, true, Math.max(0, providerLatencyMs));
@@ -588,6 +590,7 @@ export function registerMessagesRoutes(
                     getMessagePreview(anthropicBody),
                     { status: 'error', errorMessage: eMsg },
                     { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount: 0 },
+                    logger,
                 );
             }
 
@@ -628,6 +631,7 @@ function recordRequest(
     userMessagePreview: string,
     errorInfo?: { status: 'error'; errorMessage: string },
     extra?: { agentId?: string; conversationId?: string; retryCount?: number },
+    log?: Logger,
 ): void {
     if (!tracker) return;
     const cost = calculateCost(routing.provider, routing.model, usage.promptTokens, usage.completionTokens);
@@ -637,7 +641,7 @@ function recordRequest(
         config.tracking.baselineCostPerMillionInput,
         config.tracking.baselineCostPerMillionOutput,
     );
-    tracker.record({
+    void tracker.record({
         id: requestId,
         timestamp: new Date().toISOString(),
         tier: routing.tier,
@@ -658,5 +662,5 @@ function recordRequest(
         userMessagePreview,
         ...(errorInfo && { status: errorInfo.status, errorMessage: errorInfo.errorMessage }),
         ...(extra && { agentId: extra.agentId, conversationId: extra.conversationId, retryCount: extra.retryCount }),
-    });
+    }).catch(err => log?.error({ err, requestId }, 'tracking write failed'));
 }

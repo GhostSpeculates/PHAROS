@@ -183,37 +183,33 @@ export class VideoJobStore {
         const totalLatencyMs = job.completedAt ? job.completedAt - job.submittedAt : 0;
         const providerLatencyMs = totalLatencyMs;
 
-        try {
-            this.tracker.record({
-                id: job.requestId,
-                timestamp: new Date().toISOString(),
-                tier: 'video',
-                provider: job.candidate.provider,
-                model: job.candidate.model,
-                classificationScore: 0,
-                classificationType: 'video',
-                classificationLatencyMs: 0,
-                classifierProvider: 'none',
-                tokensIn: job.durationSeconds,
-                tokensOut: 0,
-                estimatedCost: cost,
-                baselineCost: cost,
-                savings: 0,
-                totalLatencyMs,
-                stream: false,
-                isDirectRoute: false,
-                userMessagePreview: job.promptPreview,
-                status: job.status === 'completed' ? 'success' : 'error',
-                errorMessage: job.error,
-                agentId: job.agentId,
-                retryCount: job.failoverAttempts,
-                providerLatencyMs,
-            });
-        } catch (err) {
-            this.logger.error(
-                { jobId: job.id, requestId: job.requestId, error: err instanceof Error ? err.message : 'unknown' },
-                'Failed to record video job in SQLite',
-            );
-        }
+        void this.tracker.record({
+            id: job.requestId,
+            timestamp: new Date().toISOString(),
+            tier: 'video',
+            provider: job.candidate.provider,
+            model: job.candidate.model,
+            classificationScore: 0,
+            classificationType: 'video',
+            classificationLatencyMs: 0,
+            classifierProvider: 'none',
+            tokensIn: job.durationSeconds,
+            tokensOut: 0,
+            estimatedCost: cost,
+            baselineCost: cost,
+            savings: 0,
+            totalLatencyMs,
+            stream: false,
+            isDirectRoute: false,
+            userMessagePreview: job.promptPreview,
+            status: job.status === 'completed' ? 'success' : 'error',
+            errorMessage: job.error,
+            agentId: job.agentId,
+            retryCount: job.failoverAttempts,
+            providerLatencyMs,
+        }).catch(err => this.logger.error(
+            { jobId: job.id, requestId: job.requestId, err },
+            'Failed to record video job in Postgres',
+        ));
     }
 }

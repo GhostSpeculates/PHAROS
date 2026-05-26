@@ -114,8 +114,9 @@ export async function createServer(config: PharosConfig): Promise<{
     // ─── Initialize Tracking ───
     let tracker: TrackingStore | null = null;
     if (config.tracking.enabled) {
-        tracker = new TrackingStore(config.tracking.dbPath, logger, config.tracking.retentionDays);
-        logger.info(`Cost tracking: enabled (${config.tracking.dbPath})`);
+        const { getSql } = await import('./db/index.js');
+        tracker = new TrackingStore({ sql: getSql(), logger });
+        logger.info(`Cost tracking: enabled (Postgres)`);
     }
 
     // ─── Initialize Wallet (Wave 5 / Phase 8.2) ───

@@ -121,7 +121,7 @@ export function registerSTTRoutes(
         if (tracker) {
             const { dailyLimit, monthlyLimit } = config.spending;
             if (dailyLimit !== null) {
-                const dailySpend = tracker.getDailySpend();
+                const dailySpend = await tracker.getDailySpend();
                 if (dailySpend >= dailyLimit) {
                     sendAlert('Daily spending limit reached', `Spent $${dailySpend.toFixed(4)} / $${dailyLimit.toFixed(2)} daily limit`, 'critical', 'spending-daily-100');
                     reply.status(429).send(buildErrorResponse(
@@ -132,7 +132,7 @@ export function registerSTTRoutes(
                 }
             }
             if (monthlyLimit !== null) {
-                const monthlySpend = tracker.getMonthlySpend();
+                const monthlySpend = await tracker.getMonthlySpend();
                 if (monthlySpend >= monthlyLimit) {
                     sendAlert('Monthly spending limit reached', `Spent $${monthlySpend.toFixed(4)} / $${monthlyLimit.toFixed(2)} monthly limit`, 'critical', 'spending-monthly-100');
                     reply.status(429).send(buildErrorResponse(
@@ -211,9 +211,9 @@ export function registerSTTRoutes(
                 responseBody = { text: result.text };
             }
 
-            // 8. Track in SQLite ─────────────────────────────────────────────
+            // 8. Track in Postgres ───────────────────────────────────────────
             if (tracker) {
-                tracker.record({
+                void tracker.record({
                     id: requestId,
                     timestamp: new Date().toISOString(),
                     tier: 'stt',
@@ -236,7 +236,7 @@ export function registerSTTRoutes(
                     agentId: agentId ?? undefined,
                     retryCount: result.failoverAttempts,
                     providerLatencyMs: result.latencyMs,
-                });
+                }).catch(err => logger.error({ err, requestId }, 'tracking write failed'));
             }
 
             // 9. Response headers ────────────────────────────────────────────
@@ -269,7 +269,7 @@ export function registerSTTRoutes(
             logger.error({ requestId, error: errMsg }, '✗ STT request failed');
 
             if (tracker) {
-                tracker.record({
+                void tracker.record({
                     id: requestId,
                     timestamp: new Date().toISOString(),
                     tier: 'stt',
@@ -291,7 +291,7 @@ export function registerSTTRoutes(
                     status: 'error',
                     errorMessage: errMsg,
                     agentId: agentId ?? undefined,
-                });
+                }).catch(err => logger.error({ err, requestId }, 'tracking write failed'));
             }
 
             reply.status(502).send(buildErrorResponse(

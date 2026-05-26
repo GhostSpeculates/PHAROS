@@ -159,7 +159,7 @@ export function registerAdminRoutes(opts: {
                 return { error: 'tracking not enabled' };
             }
 
-            const record = tracker.findByRequestId(req.params.request_id);
+            const record = await tracker.findByRequestId(req.params.request_id);
             if (!record) {
                 reply.status(404);
                 return { error: 'request not found' };
