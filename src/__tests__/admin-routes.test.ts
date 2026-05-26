@@ -2,15 +2,17 @@
  * admin-routes.test.ts — operator-gated /admin/* HTTP surface.
  *
  * Covers all 7 admin routes + the frozen-blocks-customer path in auth.ts.
- * Uses Fastify inject() + in-memory SQLite so each test starts clean.
+ * Uses Fastify inject() + Docker Postgres so each test starts clean.
  */
+import postgres from 'postgres';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { registerAdminRoutes } from '../gateway/admin-routes.js';
 import { registerRoutes } from '../gateway/router.js';
 import { WalletStore } from '../tracking/wallet-store.js';
 import { TrackingStore } from '../tracking/store.js';
 import { createLogger } from '../utils/logger.js';
+import { truncateAll } from './_helpers/test-db.js';
 import type { PharosConfig } from '../config/schema.js';
 
 const OPERATOR_KEY = 'test-operator-key';
@@ -79,20 +81,25 @@ function authHeader() {
     return { authorization: `Bearer ${OPERATOR_KEY}` };
 }
 
-function freshStores() {
-    const logger = createLogger('error', false);
-    const wallet = new WalletStore(':memory:', logger);
-    const tracker = new TrackingStore(':memory:', logger);
-    return { wallet, tracker };
-}
-
 describe('admin routes', () => {
+    let sql: ReturnType<typeof postgres>;
     let app: FastifyInstance;
     let wallet: WalletStore;
     let tracker: TrackingStore;
 
+    beforeAll(() => {
+        sql = postgres(process.env.DATABASE_URL!);
+    });
+
+    afterAll(async () => {
+        await sql.end();
+    });
+
     beforeEach(async () => {
-        ({ wallet, tracker } = freshStores());
+        await truncateAll(sql);
+        const logger = createLogger('error', false);
+        wallet = new WalletStore({ sql, logger });
+        tracker = new TrackingStore(':memory:', logger);
         app = await buildApp(wallet, tracker);
     });
 
@@ -162,7 +169,7 @@ describe('admin routes', () => {
         });
 
         it('returns user record without api_key_hash', async () => {
-            wallet.createUser({ email: 'alice@test.com', rawApiKey: 'pharos-test-alice' });
+            await wallet.createUserLegacy({ email: 'alice@test.com', rawApiKey: 'pharos-test-alice' });
             const res = await app.inject({
                 method: 'GET',
                 url: '/admin/users?email=alice@test.com',
@@ -187,7 +194,7 @@ describe('admin routes', () => {
         });
 
         it('returns usage breakdown for valid user (empty)', async () => {
-            const id = wallet.createUser({ email: 'bob@test.com', rawApiKey: 'pharos-test-bob' });
+            const id = await wallet.createUserLegacy({ email: 'bob@test.com', rawApiKey: 'pharos-test-bob' });
             const res = await app.inject({
                 method: 'GET',
                 url: `/admin/users/${id}/usage`,
@@ -279,7 +286,7 @@ describe('admin routes', () => {
 
         it('returns new api key and old key no longer works', async () => {
             const oldKey = 'pharos-old-key-rotate-test';
-            const id = wallet.createUser({ email: 'rotate@test.com', rawApiKey: oldKey });
+            const id = await wallet.createUserLegacy({ email: 'rotate@test.com', rawApiKey: oldKey });
 
             const res = await app.inject({
                 method: 'POST',
@@ -294,9 +301,9 @@ describe('admin routes', () => {
             expect(body.new_api_key).not.toBe(oldKey);
 
             // Old key should no longer authenticate
-            expect(wallet.findUserByApiKey(oldKey)).toBeNull();
+            expect(await wallet.findUserByApiKey(oldKey)).toBeNull();
             // New key should authenticate
-            expect(wallet.findUserByApiKey(body.new_api_key)).not.toBeNull();
+            expect(await wallet.findUserByApiKey(body.new_api_key)).not.toBeNull();
         });
     });
 
@@ -312,7 +319,7 @@ describe('admin routes', () => {
         });
 
         it('returns 400 for missing cents', async () => {
-            const id = wallet.createUser({ email: 'refund1@test.com', rawApiKey: 'pharos-r1' });
+            const id = await wallet.createUserLegacy({ email: 'refund1@test.com', rawApiKey: 'pharos-r1' });
             const res = await app.inject({
                 method: 'POST',
                 url: '/admin/refund',
@@ -323,7 +330,7 @@ describe('admin routes', () => {
         });
 
         it('returns 400 for cents = 0', async () => {
-            const id = wallet.createUser({ email: 'refund2@test.com', rawApiKey: 'pharos-r2' });
+            const id = await wallet.createUserLegacy({ email: 'refund2@test.com', rawApiKey: 'pharos-r2' });
             const res = await app.inject({
                 method: 'POST',
                 url: '/admin/refund',
@@ -334,7 +341,7 @@ describe('admin routes', () => {
         });
 
         it('returns 400 for cents > 100000', async () => {
-            const id = wallet.createUser({ email: 'refund3@test.com', rawApiKey: 'pharos-r3' });
+            const id = await wallet.createUserLegacy({ email: 'refund3@test.com', rawApiKey: 'pharos-r3' });
             const res = await app.inject({
                 method: 'POST',
                 url: '/admin/refund',
@@ -345,7 +352,7 @@ describe('admin routes', () => {
         });
 
         it('returns 400 for empty reason', async () => {
-            const id = wallet.createUser({ email: 'refund4@test.com', rawApiKey: 'pharos-r4' });
+            const id = await wallet.createUserLegacy({ email: 'refund4@test.com', rawApiKey: 'pharos-r4' });
             const res = await app.inject({
                 method: 'POST',
                 url: '/admin/refund',
@@ -366,7 +373,7 @@ describe('admin routes', () => {
         });
 
         it('credits user and returns new balance', async () => {
-            const id = wallet.createUser({ email: 'refund5@test.com', rawApiKey: 'pharos-r5' });
+            const id = await wallet.createUserLegacy({ email: 'refund5@test.com', rawApiKey: 'pharos-r5' });
             const res = await app.inject({
                 method: 'POST',
                 url: '/admin/refund',
@@ -381,7 +388,7 @@ describe('admin routes', () => {
             expect(typeof body.ledger_id).toBe('number');
 
             // Verify the balance actually increased
-            expect(wallet.getBalanceCents(id)).toBe(500);
+            expect(await wallet.getBalanceCents(id)).toBe(500);
         });
     });
 
@@ -407,7 +414,7 @@ describe('admin routes', () => {
         });
 
         it('returns 400 when frozen is not boolean', async () => {
-            const id = wallet.createUser({ email: 'freeze1@test.com', rawApiKey: 'pharos-f1' });
+            const id = await wallet.createUserLegacy({ email: 'freeze1@test.com', rawApiKey: 'pharos-f1' });
             const res = await app.inject({
                 method: 'POST',
                 url: `/admin/freeze/${id}`,
@@ -418,7 +425,7 @@ describe('admin routes', () => {
         });
 
         it('freezes and unfreezes a user', async () => {
-            const id = wallet.createUser({ email: 'freeze2@test.com', rawApiKey: 'pharos-f2' });
+            const id = await wallet.createUserLegacy({ email: 'freeze2@test.com', rawApiKey: 'pharos-f2' });
 
             const freezeRes = await app.inject({
                 method: 'POST',
@@ -431,7 +438,7 @@ describe('admin routes', () => {
             expect(freezeBody.frozen).toBe(true);
             expect(freezeBody.reason).toBe('fraud investigation');
 
-            const user = wallet.findUserById(id);
+            const user = await wallet.findUserById(id);
             expect(user?.frozen).toBe(1);
 
             // Unfreeze
@@ -443,7 +450,7 @@ describe('admin routes', () => {
             });
             expect(unfreezeRes.statusCode).toBe(200);
             expect(unfreezeRes.json().frozen).toBe(false);
-            expect(wallet.findUserById(id)?.frozen).toBe(0);
+            expect((await wallet.findUserById(id))?.frozen).toBe(0);
         });
     });
 
@@ -457,13 +464,13 @@ describe('admin routes', () => {
             const registry = makeRegistry();
             const rawKey = 'pharos-frozen-user-test';
 
-            // Separate in-memory stores so we don't pollute the outer test
-            const frozenWallet = new WalletStore(':memory:', logger);
+            // Separate wallet sharing the same sql connection
+            const frozenWallet = new WalletStore({ sql, logger });
             const frozenTracker = new TrackingStore(':memory:', logger);
-            const userId = frozenWallet.createUser({ email: 'frozen@test.com', rawApiKey: rawKey });
+            const userId = await frozenWallet.createUserLegacy({ email: 'frozen@test.com', rawApiKey: rawKey });
 
             // Give them credits so the 402 path doesn't fire first
-            frozenWallet.applyTopup({ userId, amountCents: 1000, stripeEventId: 'evt_freeze_test' });
+            await frozenWallet.applyTopup({ userId, amountCents: 1000, stripeEventId: 'evt_freeze_test' });
 
             // Stub classifier/router that would never be reached for frozen user
             const classifier = {
@@ -492,7 +499,7 @@ describe('admin routes', () => {
             expect(okRes.statusCode).not.toBe(403);
 
             // Now freeze the user
-            frozenWallet.setFrozen(userId, true);
+            await frozenWallet.setFrozen(userId, true);
 
             const frozenRes = await authApp.inject({
                 method: 'POST',

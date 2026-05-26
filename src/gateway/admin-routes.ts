@@ -66,7 +66,7 @@ export function registerAdminRoutes(opts: {
         let dbStatus: 'ok' | 'error' = 'ok';
         try {
             // A live query confirms the db is reachable; no-op on failure path.
-            wallet.findUserByEmail('__admin_health_probe__');
+            await wallet.findUserByEmail('__admin_health_probe__');
         } catch {
             dbStatus = 'error';
         }
@@ -100,7 +100,7 @@ export function registerAdminRoutes(opts: {
             return { error: 'email query parameter required' };
         }
 
-        const user = wallet.findUserByEmail(email.toLowerCase());
+        const user = await wallet.findUserByEmail(email.toLowerCase());
         if (!user) {
             reply.status(404);
             return { error: 'user not found' };
@@ -133,7 +133,7 @@ export function registerAdminRoutes(opts: {
 
             const since = req.query.since;
             const defaultSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-            const usage = wallet.getUsageByUser(userId, since);
+            const usage = await wallet.getUsageByUser(userId, since);
 
             return {
                 user_id: userId,
@@ -181,13 +181,13 @@ export function registerAdminRoutes(opts: {
                 return { error: 'invalid user id' };
             }
 
-            const user = wallet.findUserById(userId);
+            const user = await wallet.findUserById(userId);
             if (!user) {
                 reply.status(404);
                 return { error: 'user not found' };
             }
 
-            const newKey = wallet.rotateApiKey(userId);
+            const newKey = await wallet.rotateApiKeyLegacy(userId);
             logger.info({ userId, email: user.email }, '[admin] api key rotated');
 
             return { user_id: userId, new_api_key: newKey };
@@ -216,13 +216,13 @@ export function registerAdminRoutes(opts: {
             return { error: 'reason must be a non-empty string' };
         }
 
-        const user = wallet.findUserById(userId);
+        const user = await wallet.findUserById(userId);
         if (!user) {
             reply.status(404);
             return { error: 'user not found' };
         }
 
-        const { ledgerId, newBalanceCents } = wallet.creditUser(userId, cents, reason);
+        const { ledgerId, newBalanceCents } = await wallet.creditUser(userId, cents, reason);
         logger.info({ userId, cents, reason, ledgerId }, '[admin] manual credit applied');
 
         return { ledger_id: ledgerId, user_id: userId, cents, new_balance_cents: newBalanceCents };
@@ -240,7 +240,7 @@ export function registerAdminRoutes(opts: {
                 return { error: 'invalid user id' };
             }
 
-            const user = wallet.findUserById(userId);
+            const user = await wallet.findUserById(userId);
             if (!user) {
                 reply.status(404);
                 return { error: 'user not found' };
@@ -253,7 +253,7 @@ export function registerAdminRoutes(opts: {
             }
 
             const reason = typeof body.reason === 'string' ? body.reason.trim() : undefined;
-            wallet.setFrozen(userId, body.frozen);
+            await wallet.setFrozen(userId, body.frozen);
             logger.info({ userId, email: user.email, frozen: body.frozen, reason }, '[admin] account freeze updated');
 
             return { user_id: userId, frozen: body.frozen, reason: reason ?? null };

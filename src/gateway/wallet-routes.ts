@@ -85,7 +85,7 @@ export function registerWalletRoutes(opts: {
     const emailLimiter = createSlidingWindowLimiter(CHECKOUT_WINDOW_MS, 3, 'email', logger);
 
     // Helper: extract user from Authorization header.
-    function authUser(req: FastifyRequest) {
+    async function authUser(req: FastifyRequest) {
         const raw = req.headers['authorization'];
         if (!raw || typeof raw !== 'string') return null;
         const m = raw.match(/^Bearer\s+(.+)$/i);
@@ -96,7 +96,7 @@ export function registerWalletRoutes(opts: {
     // ── GET /v1/credits ─────────────────────────────────────────────────
     // OpenRouter-shape: {data: {total_credits, total_usage}}. Both USD floats.
     // Operator key (used by king-tut canary) returns zeros — valid shape, no user context.
-    fastify.get('/v1/credits', (req, reply) => {
+    fastify.get('/v1/credits', async (req, reply) => {
         if (operatorKey) {
             const raw = req.headers['authorization'];
             const m = raw && typeof raw === 'string' ? raw.match(/^Bearer\s+(.+)$/i) : null;
@@ -104,12 +104,12 @@ export function registerWalletRoutes(opts: {
                 return { data: { total_credits: 0, total_usage: 0 } };
             }
         }
-        const user = authUser(req);
+        const user = await authUser(req);
         if (!user) {
             reply.status(401);
             return { error: { message: 'invalid api key', type: 'authentication_error' } };
         }
-        const { totalCreditsUsd, totalUsageUsd } = wallet.creditsForUser(user.id);
+        const { totalCreditsUsd, totalUsageUsd } = await wallet.creditsForUser(user.id);
         return {
             data: {
                 total_credits: totalCreditsUsd,
@@ -119,8 +119,8 @@ export function registerWalletRoutes(opts: {
     });
 
     // ── GET /wallet/me ──────────────────────────────────────────────────
-    fastify.get('/wallet/me', (req, reply) => {
-        const user = authUser(req);
+    fastify.get('/wallet/me', async (req, reply) => {
+        const user = await authUser(req);
         if (!user) {
             reply.status(401);
             return { error: 'invalid api key' };
@@ -141,7 +141,7 @@ export function registerWalletRoutes(opts: {
     // Authed existing-customer top-up. Body: {amount_usd: number}.
     // Returns {url} to redirect the user to Stripe Checkout.
     fastify.post<{ Body: TopupBody }>('/wallet/topup', async (req, reply) => {
-        const user = authUser(req);
+        const user = await authUser(req);
         if (!user) {
             reply.status(401);
             return { error: 'invalid api key' };
@@ -329,7 +329,7 @@ export function registerWalletRoutes(opts: {
             return { received: true, skipped: 'not_paid' };
         }
 
-        let user = wallet.findUserByEmail(email);
+        let user = await wallet.findUserByEmail(email);
         let isNewUser = false;
         let rawApiKey: string | null = null;
 
@@ -337,18 +337,19 @@ export function registerWalletRoutes(opts: {
             // First payment — provision the account.
             rawApiKey = generateUserApiKey();
             try {
-                const userId = wallet.createUser({
+                await wallet.createUserLegacy({
                     email,
                     rawApiKey,
                     balanceCents: 0,  // balance comes from the topup ledger row below
                 });
-                user = wallet.findUserByEmail(email);
-                logger.info({ userId, email }, '[wallet] new user created from stripe webhook');
+                user = await wallet.findUserByEmail(email);
+                logger.info({ email }, '[wallet] new user created from stripe webhook');
                 isNewUser = true;
             } catch (e) {
                 const err = e as { code?: string };
-                if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-                    user = wallet.findUserByEmail(email);
+                // Postgres unique violation = 23505
+                if (err.code === '23505') {
+                    user = await wallet.findUserByEmail(email);
                     rawApiKey = null;
                     logger.warn({ email }, '[wallet] race: user created by concurrent webhook delivery');
                 } else {
@@ -363,7 +364,7 @@ export function registerWalletRoutes(opts: {
             return { error: 'user provisioning failed' };
         }
 
-        const topup = wallet.applyTopup({
+        const topup = await wallet.applyTopup({
             userId: user.id,
             amountCents,
             stripeEventId: event.id,

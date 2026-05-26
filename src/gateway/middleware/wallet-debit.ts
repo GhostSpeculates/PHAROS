@@ -74,7 +74,7 @@ export function registerWalletDebitHook(
             if (billing.upstream_usd <= 0) return;
 
             const cents = customerChargeCents(billing.upstream_usd, markup);
-            wallet.reserveDebit({
+            await wallet.reserveDebit({
                 userId: user.id,
                 estimateCents: cents,
                 model: billing.model,

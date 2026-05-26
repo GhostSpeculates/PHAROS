@@ -3,14 +3,16 @@
  *
  * Covers /v1/credits, /wallet/me, /wallet/checkout, /wallet/topup, /webhook/stripe.
  * Stripe is mocked; Resend is mocked via the email module spy. WalletStore uses
- * an in-memory SQLite DB so each test starts fresh.
+ * a Docker Postgres DB so each test starts fresh.
  */
+import postgres from 'postgres';
 import Fastify, { type FastifyInstance } from 'fastify';
 import rawBody from 'fastify-raw-body';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerWalletRoutes } from '../gateway/wallet-routes.js';
 import { WalletStore } from '../tracking/wallet-store.js';
 import { createLogger } from '../utils/logger.js';
+import { truncateAll } from './_helpers/test-db.js';
 import * as emailModule from '../utils/email.js';
 
 // ── Stripe mock ─────────────────────────────────────────────────────────
@@ -52,18 +54,23 @@ async function buildApp(wallet: WalletStore): Promise<FastifyInstance> {
     return app;
 }
 
-function freshWallet(): WalletStore {
-    const logger = createLogger('error', false);
-    return new WalletStore(':memory:', logger);
-}
-
 describe('wallet routes', () => {
+    let sql: ReturnType<typeof postgres>;
     let app: FastifyInstance;
     let wallet: WalletStore;
     let resendSpy: ReturnType<typeof vi.spyOn>;
 
+    beforeAll(() => {
+        sql = postgres(process.env.DATABASE_URL!);
+    });
+
+    afterAll(async () => {
+        await sql.end();
+    });
+
     beforeEach(async () => {
-        wallet = freshWallet();
+        await truncateAll(sql);
+        wallet = new WalletStore({ sql, logger: createLogger('error', false) });
         app = await buildApp(wallet);
         stripeMockState.createSession.mockReset();
         stripeMockState.constructEvent.mockReset();
@@ -104,8 +111,8 @@ describe('wallet routes', () => {
 
         it('returns OpenRouter-shape body for a valid user', async () => {
             const rawKey = 'pharos-test-key-credits';
-            const userId = wallet.createUser({ email: 'a@b.com', rawApiKey: rawKey });
-            wallet.applyTopup({ userId, amountCents: 500, stripeEventId: 'evt_seed' });
+            const userId = await wallet.createUserLegacy({ email: 'a@b.com', rawApiKey: rawKey });
+            await wallet.applyTopup({ userId, amountCents: 500, stripeEventId: 'evt_seed' });
             const res = await app.inject({
                 method: 'GET',
                 url: '/v1/credits',
@@ -127,7 +134,7 @@ describe('wallet routes', () => {
 
         it('returns full user record for valid user', async () => {
             const rawKey = 'pharos-test-key-me';
-            wallet.createUser({ email: 'b@c.com', rawApiKey: rawKey });
+            await wallet.createUserLegacy({ email: 'b@c.com', rawApiKey: rawKey });
             const res = await app.inject({
                 method: 'GET',
                 url: '/wallet/me',
@@ -223,7 +230,7 @@ describe('wallet routes', () => {
 
         it('rejects bad amount for authed user', async () => {
             const rawKey = 'pharos-test-key-topup-bad';
-            wallet.createUser({ email: 't@b.com', rawApiKey: rawKey });
+            await wallet.createUserLegacy({ email: 't@b.com', rawApiKey: rawKey });
             const res = await app.inject({
                 method: 'POST',
                 url: '/wallet/topup',
@@ -235,7 +242,7 @@ describe('wallet routes', () => {
 
         it('returns session url for authed user', async () => {
             const rawKey = 'pharos-test-key-topup-ok';
-            wallet.createUser({ email: 't2@b.com', rawApiKey: rawKey });
+            await wallet.createUserLegacy({ email: 't2@b.com', rawApiKey: rawKey });
             stripeMockState.createSession.mockResolvedValueOnce({
                 id: 'cs_topup_1',
                 url: 'https://stripe.test/topup',
@@ -315,9 +322,9 @@ describe('wallet routes', () => {
 
             expect(res.statusCode).toBe(200);
             expect(res.json().applied).toBe(true);
-            const user = wallet.findUserByEmail('fresh@user.com');
+            const user = await wallet.findUserByEmail('fresh@user.com');
             expect(user).not.toBeNull();
-            expect(wallet.getBalanceCents(user!.id)).toBe(500);
+            expect(await wallet.getBalanceCents(user!.id)).toBe(500);
             expect(resendSpy).toHaveBeenCalledTimes(1);
             const emailCall = resendSpy.mock.calls[0][0] as { to: string; apiKey: string; creditsUsd: number };
             expect(emailCall.to).toBe('fresh@user.com');
@@ -327,7 +334,7 @@ describe('wallet routes', () => {
 
         it('credits existing user without sending welcome email', async () => {
             const rawKey = 'pharos-existing-user';
-            wallet.createUser({ email: 'returning@user.com', rawApiKey: rawKey });
+            await wallet.createUserLegacy({ email: 'returning@user.com', rawApiKey: rawKey });
 
             stripeMockState.constructEvent.mockReturnValueOnce({
                 id: 'evt_returning_1',
@@ -350,8 +357,8 @@ describe('wallet routes', () => {
             });
 
             expect(res.statusCode).toBe(200);
-            const user = wallet.findUserByEmail('returning@user.com')!;
-            expect(wallet.getBalanceCents(user.id)).toBe(2000);
+            const user = (await wallet.findUserByEmail('returning@user.com'))!;
+            expect(await wallet.getBalanceCents(user.id)).toBe(2000);
             expect(resendSpy).not.toHaveBeenCalled();
         });
 
@@ -387,8 +394,8 @@ describe('wallet routes', () => {
             expect(r2.statusCode).toBe(200);
             expect(r2.json().deduped).toBe(true);
 
-            const user = wallet.findUserByEmail('dedup@user.com')!;
-            expect(wallet.getBalanceCents(user.id)).toBe(500);
+            const user = (await wallet.findUserByEmail('dedup@user.com'))!;
+            expect(await wallet.getBalanceCents(user.id)).toBe(500);
         });
 
         it('skips on unpaid checkout session', async () => {
@@ -412,7 +419,7 @@ describe('wallet routes', () => {
             });
             expect(res.statusCode).toBe(200);
             expect(res.json().skipped).toBe('not_paid');
-            expect(wallet.findUserByEmail('x@y.com')).toBeNull();
+            expect(await wallet.findUserByEmail('x@y.com')).toBeNull();
         });
     });
 });
