@@ -103,20 +103,20 @@ describe('ModelRouter', () => {
     });
 
     describe('route()', () => {
-        it('routes score 1 to free tier', () => {
+        it('routes score 1 to free tier', async () => {
             const registry = makeRegistry({ google: true, deepseek: true, anthropic: true });
             const router = new ModelRouter(config, registry, logger);
-            const result = router.route(makeClassification(1));
+            const result = await router.route(makeClassification(1));
 
             expect(result.tier).toBe('free');
             expect(result.provider).toBe('google');
             expect(result.isDirectRoute).toBe(false);
         });
 
-        it('routes score 5 to economical tier', () => {
+        it('routes score 5 to economical tier', async () => {
             const registry = makeRegistry({ google: true, deepseek: true, anthropic: true });
             const router = new ModelRouter(config, registry, logger);
-            const result = router.route(makeClassification(5));
+            const result = await router.route(makeClassification(5));
 
             // With merged-registry pricing, anthropic claude-sonnet has known cost ($18/M)
             // while deepseek isn't in the static seed (returns Infinity from getModelCost).
@@ -125,30 +125,30 @@ describe('ModelRouter', () => {
             expect(result.provider).toBe('anthropic');
         });
 
-        it('routes score 7 to premium tier', () => {
+        it('routes score 7 to premium tier', async () => {
             const registry = makeRegistry({ anthropic: true, openai: true });
             const router = new ModelRouter(config, registry, logger);
-            const result = router.route(makeClassification(7));
+            const result = await router.route(makeClassification(7));
 
             expect(result.tier).toBe('premium');
             expect(result.provider).toBe('anthropic');
         });
 
-        it('routes score 10 to frontier tier', () => {
+        it('routes score 10 to frontier tier', async () => {
             const registry = makeRegistry({ anthropic: true });
             const router = new ModelRouter(config, registry, logger);
-            const result = router.route(makeClassification(10));
+            const result = await router.route(makeClassification(10));
 
             expect(result.tier).toBe('frontier');
             expect(result.provider).toBe('anthropic');
             expect(result.model).toBe('claude-opus-4-20250514');
         });
 
-        it('uses failover when primary provider is down', () => {
+        it('uses failover when primary provider is down', async () => {
             // Anthropic + deepseek down in premium → should failover to openai
             const registry = makeRegistry({ anthropic: false, openai: true, deepseek: false });
             const router = new ModelRouter(config, registry, logger);
-            const result = router.route(makeClassification(7));
+            const result = await router.route(makeClassification(7));
 
             expect(result.provider).toBe('openai');
             expect(result.model).toBe('gpt-4o');
@@ -234,20 +234,20 @@ describe('ModelRouter', () => {
     });
 
     describe('getCandidates()', () => {
-        it('returns candidates in failover order for given classification', () => {
+        it('returns candidates in failover order for given classification', async () => {
             const registry = makeRegistry({ google: true, deepseek: true, anthropic: true, openai: true });
             const router = new ModelRouter(config, registry, logger);
-            const candidates = router.getCandidates(makeClassification(5));
+            const candidates = await router.getCandidates(makeClassification(5));
 
             expect(candidates.length).toBeGreaterThan(0);
             // First candidate should be from economical tier
             expect(candidates[0].tier).toBe('economical');
         });
 
-        it('sorts candidates by code affinity within tier', () => {
+        it('sorts candidates by code affinity within tier', async () => {
             const registry = makeRegistry({ anthropic: true, openai: true, deepseek: true });
             const router = new ModelRouter(config, registry, logger);
-            const candidates = router.getCandidates(makeClassification(7, 'code'));
+            const candidates = await router.getCandidates(makeClassification(7, 'code'));
 
             // Premium tier has anthropic, openai, deepseek
             // Code affinity: deepseek first
@@ -255,10 +255,10 @@ describe('ModelRouter', () => {
             expect(premiumCandidates[0].provider).toBe('deepseek');
         });
 
-        it('sorts candidates by reasoning affinity within tier', () => {
+        it('sorts candidates by reasoning affinity within tier', async () => {
             const registry = makeRegistry({ anthropic: true, openai: true, deepseek: true });
             const router = new ModelRouter(config, registry, logger);
-            const candidates = router.getCandidates(makeClassification(7, 'reasoning'));
+            const candidates = await router.getCandidates(makeClassification(7, 'reasoning'));
 
             // Reasoning affinity: anthropic first, then openai
             const premiumCandidates = candidates.filter(c => c.tier === 'premium');
@@ -266,10 +266,10 @@ describe('ModelRouter', () => {
             expect(premiumCandidates[1].provider).toBe('openai');
         });
 
-        it('uses default order when no affinity for task type', () => {
+        it('uses default order when no affinity for task type', async () => {
             const registry = makeRegistry({ anthropic: true, openai: true, deepseek: true });
             const router = new ModelRouter(config, registry, logger);
-            const candidates = router.getCandidates(makeClassification(7, 'greeting'));
+            const candidates = await router.getCandidates(makeClassification(7, 'greeting'));
 
             // No affinity for greeting — keeps config order
             const premiumCandidates = candidates.filter(c => c.tier === 'premium');
@@ -366,30 +366,30 @@ describe('ModelRouter', () => {
     });
 
     describe('route() with affinity', () => {
-        it('routes code task to deepseek in premium tier', () => {
+        it('routes code task to deepseek in premium tier', async () => {
             const registry = makeRegistry({ anthropic: true, openai: true, deepseek: true });
             const router = new ModelRouter(config, registry, logger);
-            const result = router.route(makeClassification(7, 'code'));
+            const result = await router.route(makeClassification(7, 'code'));
 
             // Code affinity prefers deepseek
             expect(result.provider).toBe('deepseek');
             expect(result.tier).toBe('premium');
         });
 
-        it('routes reasoning task to anthropic in premium tier', () => {
+        it('routes reasoning task to anthropic in premium tier', async () => {
             const registry = makeRegistry({ anthropic: true, openai: true, deepseek: true });
             const router = new ModelRouter(config, registry, logger);
-            const result = router.route(makeClassification(7, 'reasoning'));
+            const result = await router.route(makeClassification(7, 'reasoning'));
 
             // Reasoning affinity prefers anthropic
             expect(result.provider).toBe('anthropic');
             expect(result.tier).toBe('premium');
         });
 
-        it('falls back when preferred provider is down', () => {
+        it('falls back when preferred provider is down', async () => {
             const registry = makeRegistry({ anthropic: false, openai: true, deepseek: false });
             const router = new ModelRouter(config, registry, logger);
-            const result = router.route(makeClassification(7, 'code'));
+            const result = await router.route(makeClassification(7, 'code'));
 
             // deepseek (preferred) is down, so falls through
             expect(result.provider).toBe('openai');

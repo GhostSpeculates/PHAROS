@@ -65,7 +65,7 @@ export function registerRoutes(
             })
             .join('&nbsp;&nbsp;');
 
-        const stats = tracker?.getSummary();
+        const stats = await tracker?.getSummary();
         const totalReqs = stats?.totalRequests ?? 0;
         const totalCost = stats?.totalCost ?? 0;
         const totalSavings = stats?.totalSavings ?? 0;
@@ -81,7 +81,9 @@ export function registerRoutes(
                 .join('')
             : '<tr><td colspan="3">No requests yet</td></tr>';
 
-        const recent = tracker?.getRecent(25) ?? [];
+        const recent = await tracker?.getRecent(25) ?? [];
+        const dashTopPerformers = phase2Metrics && learningStore ? (await learningStore.getTopPerformers(3)) : [];
+        const dashTrackedCount = learningStore ? (await learningStore.getTrackedCount()) : 0;
         const tierColors: Record<string, string> = {
             free: '#22c55e', economical: '#3b82f6', premium: '#a855f7', frontier: '#f59e0b',
         };
@@ -204,10 +206,10 @@ ${Object.entries(status).map(([name, info]: [string, any]) => {
 
 ${(() => {
     if (!phase2Metrics) return '';
-    const topPerformers = learningStore?.getTopPerformers(3) ?? [];
+    const topPerformers = dashTopPerformers;
     const p2 = phase2Metrics.getSummary(
         !!learningStore,
-        learningStore?.getTrackedCount() ?? 0,
+        dashTrackedCount,
         topPerformers.map(w => ({ provider: w.provider, model: w.model, taskType: w.taskType, weight: Math.round(w.weight * 100) / 100, successRate: Math.round(w.successRate * 100) / 100 })),
         [],
     );
@@ -404,7 +406,7 @@ ${recentRows}
         if (tracker) {
             const { dailyLimit, monthlyLimit } = config.spending;
             if (dailyLimit !== null) {
-                const dailySpend = tracker.getDailySpend();
+                const dailySpend = await tracker.getDailySpend();
                 if (dailySpend >= dailyLimit) {
                     sendAlert('Daily spending limit reached', `Spent $${dailySpend.toFixed(4)} / $${dailyLimit.toFixed(2)} daily limit`, 'critical', 'spending-daily-100');
                     reply.status(429).send(buildErrorResponse(
@@ -418,7 +420,7 @@ ${recentRows}
                 }
             }
             if (monthlyLimit !== null) {
-                const monthlySpend = tracker.getMonthlySpend();
+                const monthlySpend = await tracker.getMonthlySpend();
                 if (monthlySpend >= monthlyLimit) {
                     sendAlert('Monthly spending limit reached', `Spent $${monthlySpend.toFixed(4)} / $${monthlyLimit.toFixed(2)} monthly limit`, 'critical', 'spending-monthly-100');
                     reply.status(429).send(buildErrorResponse(
@@ -514,7 +516,7 @@ ${recentRows}
                 );
             } else {
                 // Normal routing via classifier (with affinity)
-                routing = router.route(classification);
+                routing = await router.route(classification);
 
                 // Apply conversation tier floor — prevent quality drops in multi-turn conversations
                 if (conversationId && conversationTracker && config.conversation?.enabled) {
@@ -525,7 +527,7 @@ ${recentRows}
                             // Re-route with elevated tier by using that tier's minimum score
                             const elevatedScore = config.tiers[elevatedTier].scoreRange[0];
                             const elevatedClassification = { ...classification, score: elevatedScore };
-                            routing = router.route(elevatedClassification);
+                            routing = await router.route(elevatedClassification);
                             conversationTierFloor = floor;
                             logger.info(
                                 {
@@ -602,7 +604,7 @@ ${recentRows}
             // Build candidate list: direct routes get a single candidate, auto routes get full retry chain
             const candidates = directModel
                 ? [{ provider: routing.provider, model: routing.model, tier: routing.tier }]
-                : router.getCandidates(classification);
+                : await router.getCandidates(classification);
 
             if (candidates.length === 0) {
                 throw new Error('No available providers found');
@@ -674,6 +676,7 @@ ${recentRows}
                                         Date.now() - requestStartTime, true, userMessagePreview,
                                         undefined, { debugInput },
                                         { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount },
+                                        logger,
                                     );
                                     return;
                                 }
@@ -739,6 +742,7 @@ ${recentRows}
                                 Date.now() - requestStartTime, true, userMessagePreview,
                                 undefined, { debugInput },
                                 { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount, providerLatencyMs: Math.max(0, providerLatency) },
+                                logger,
                             );
 
                             // Record performance learning outcome (success)
@@ -944,6 +948,7 @@ ${recentRows}
                 Date.now() - requestStartTime, false, userMessagePreview,
                 undefined, { debugInput, debugOutput },
                 { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount },
+                logger,
             );
 
             // Record performance learning outcome (success)
@@ -1007,6 +1012,7 @@ ${recentRows}
                     { status: 'error', errorMessage: errMsg },
                     { debugInput },
                     { agentId: agentId ?? undefined, conversationId: conversationId ?? undefined, retryCount: 0 },
+                    logger,
                 );
             }
 
@@ -1040,19 +1046,19 @@ ${recentRows}
         if (!tracker) {
             return { error: 'Tracking is disabled' };
         }
-        const summary = tracker.getSummary();
+        const summary = await tracker.getSummary();
         summary.classifier = classifier.getMetrics();
 
         // Phase 2 metrics
         if (phase2Metrics) {
-            const topPerformers = learningStore?.getTopPerformers(5)?.map(w => ({
+            const topPerformers = (await learningStore?.getTopPerformers(5))?.map(w => ({
                 provider: w.provider,
                 model: w.model,
                 taskType: w.taskType,
                 weight: Math.round(w.weight * 100) / 100,
                 successRate: Math.round(w.successRate * 100) / 100,
             })) ?? [];
-            const worstPerformers = learningStore?.getWorstPerformers(5)?.map(w => ({
+            const worstPerformers = (await learningStore?.getWorstPerformers(5))?.map(w => ({
                 provider: w.provider,
                 model: w.model,
                 taskType: w.taskType,
@@ -1062,7 +1068,7 @@ ${recentRows}
 
             summary.phase2 = phase2Metrics.getSummary(
                 !!learningStore,
-                learningStore?.getTrackedCount() ?? 0,
+                (await learningStore?.getTrackedCount()) ?? 0,
                 topPerformers,
                 worstPerformers,
             );
@@ -1076,7 +1082,7 @@ ${recentRows}
         if (!tracker) {
             return { error: 'Tracking is disabled' };
         }
-        return { requests: tracker.getRecent(25) };
+        return { requests: await tracker.getRecent(25) };
     });
 }
 
@@ -1096,6 +1102,7 @@ function trackRequest(
     errorInfo?: { status: 'error'; errorMessage: string },
     debugInfo?: { debugInput?: string; debugOutput?: string },
     extraFields?: { agentId?: string; conversationId?: string; retryCount?: number; providerLatencyMs?: number },
+    log?: Logger,
 ): void {
     if (!tracker) return;
 
@@ -1107,7 +1114,7 @@ function trackRequest(
         config.tracking.baselineCostPerMillionOutput,
     );
 
-    tracker.record({
+    void tracker.record({
         id: requestId,
         timestamp: new Date().toISOString(),
         tier: routing.tier,
@@ -1134,5 +1141,5 @@ function trackRequest(
             retryCount: extraFields.retryCount,
             providerLatencyMs: extraFields.providerLatencyMs,
         }),
-    });
+    }).catch(err => log?.error({ err, requestId }, 'tracking write failed'));
 }

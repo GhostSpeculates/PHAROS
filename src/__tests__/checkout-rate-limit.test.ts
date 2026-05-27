@@ -4,13 +4,15 @@
  * Tests for the checkout rate limiter middleware (unit) and the
  * /wallet/checkout route integration (IP + email limits).
  */
+import postgres from 'postgres';
 import Fastify, { type FastifyInstance } from 'fastify';
 import rawBody from 'fastify-raw-body';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSlidingWindowLimiter } from '../gateway/middleware/checkout-rate-limit.js';
 import { registerWalletRoutes } from '../gateway/wallet-routes.js';
 import { WalletStore } from '../tracking/wallet-store.js';
 import { createLogger } from '../utils/logger.js';
+import { truncateAll } from './_helpers/test-db.js';
 
 // ── Stripe mock (same pattern as wallet-routes.test.ts) ─────────────────────
 const stripeMockState = {
@@ -124,6 +126,13 @@ describe('createSlidingWindowLimiter', () => {
 
 // ── Integration tests: /wallet/checkout route ────────────────────────────────
 
+let _sql: ReturnType<typeof postgres> | null = null;
+
+function getSql(): ReturnType<typeof postgres> {
+    if (!_sql) _sql = postgres(process.env.DATABASE_URL!);
+    return _sql;
+}
+
 async function buildApp(wallet: WalletStore): Promise<FastifyInstance> {
     const app = Fastify({ logger: { level: 'error' } });
     await app.register(rawBody, {
@@ -138,8 +147,10 @@ async function buildApp(wallet: WalletStore): Promise<FastifyInstance> {
     return app;
 }
 
-function freshWallet(): WalletStore {
-    return new WalletStore(':memory:', createLogger('error', false));
+async function freshWallet(): Promise<WalletStore> {
+    const sql = getSql();
+    await truncateAll(sql);
+    return new WalletStore({ sql, logger: createLogger('error', false) });
 }
 
 // Helper: inject a valid checkout request with a custom remoteAddress (simulates req.ip).
@@ -160,9 +171,13 @@ describe('/wallet/checkout rate limiting (integration)', () => {
     let app: FastifyInstance;
     let wallet: WalletStore;
 
+    afterAll(async () => {
+        if (_sql) await _sql.end();
+    });
+
     beforeEach(async () => {
         // Each test gets a fresh app (fresh limiters with empty windows).
-        wallet = freshWallet();
+        wallet = await freshWallet();
         app = await buildApp(wallet);
         stripeMockState.createSession.mockReset();
         stripeMockState.constructEvent.mockReset();

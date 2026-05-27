@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { Sql } from 'postgres';
 import type { Logger } from '../utils/logger.js';
 
 export interface PerformanceLearningConfig {
@@ -19,84 +19,60 @@ export interface PerformanceWeight {
     sampleCount: number;
 }
 
+interface PerfRow {
+    provider: string;
+    model: string;
+    task_type: string;
+    success_count: number;
+    error_count: number;
+    total_latency_ms: number;
+}
+
 /**
  * Tracks per-model per-task-type success/failure rates and latencies
- * in SQLite. Computes routing weights that influence candidate ordering.
+ * in Postgres. Computes routing weights that influence candidate ordering.
  */
 export class PerformanceLearningStore {
-    private db: Database.Database;
+    private sql: Sql;
     private logger: Logger;
     private config: PerformanceLearningConfig;
-    private upsertStmt: Database.Statement;
-    private getStmt: Database.Statement;
-    private getByTaskTypeStmt: Database.Statement;
 
     /** Median latency baseline (ms) used as reference in latency factor */
     private static readonly MEDIAN_LATENCY_MS = 2000;
 
-    constructor(db: Database.Database, logger: Logger, config: PerformanceLearningConfig) {
-        this.db = db;
+    constructor(sql: Sql, logger: Logger, config: PerformanceLearningConfig) {
+        this.sql = sql;
         this.logger = logger;
         this.config = config;
-
-        // Create table
-        this.db.exec(`
-            CREATE TABLE IF NOT EXISTS model_performance (
-                provider TEXT NOT NULL,
-                model TEXT NOT NULL,
-                task_type TEXT NOT NULL,
-                success_count INTEGER NOT NULL DEFAULT 0,
-                error_count INTEGER NOT NULL DEFAULT 0,
-                total_latency_ms INTEGER NOT NULL DEFAULT 0,
-                last_updated TEXT NOT NULL,
-                PRIMARY KEY (provider, model, task_type)
-            )
-        `);
-
-        // Prepare statements
-        this.upsertStmt = this.db.prepare(`
-            INSERT INTO model_performance (provider, model, task_type, success_count, error_count, total_latency_ms, last_updated)
-            VALUES (@provider, @model, @taskType, @successAdd, @errorAdd, @latencyAdd, @now)
-            ON CONFLICT(provider, model, task_type) DO UPDATE SET
-                success_count = success_count + @successAdd,
-                error_count = error_count + @errorAdd,
-                total_latency_ms = total_latency_ms + @latencyAdd,
-                last_updated = @now
-        `);
-
-        this.getStmt = this.db.prepare(`
-            SELECT provider, model, task_type, success_count, error_count, total_latency_ms
-            FROM model_performance
-            WHERE provider = ? AND model = ? AND task_type = ?
-        `);
-
-        this.getByTaskTypeStmt = this.db.prepare(`
-            SELECT provider, model, task_type, success_count, error_count, total_latency_ms
-            FROM model_performance
-            WHERE task_type = ?
-        `);
     }
 
     /**
      * Record an outcome after a request completes (or fails).
      */
-    recordOutcome(
+    async recordOutcome(
         provider: string,
         model: string,
         taskType: string,
         success: boolean,
         latencyMs: number,
-    ): void {
+    ): Promise<void> {
+        const successAdd = success ? 1 : 0;
+        const errorAdd = success ? 0 : 1;
+        const latencyAdd = success ? Math.max(0, Math.round(latencyMs)) : 0;
+        const now = new Date().toISOString();
         try {
-            this.upsertStmt.run({
-                provider,
-                model,
-                taskType,
-                successAdd: success ? 1 : 0,
-                errorAdd: success ? 0 : 1,
-                latencyAdd: success ? Math.max(0, Math.round(latencyMs)) : 0,
-                now: new Date().toISOString(),
-            });
+            await this.sql`
+                INSERT INTO model_performance (
+                    provider, model, task_type, success_count, error_count, total_latency_ms, last_updated
+                ) VALUES (
+                    ${provider}, ${model}, ${taskType}, ${successAdd}, ${errorAdd}, ${latencyAdd}, ${now}
+                )
+                ON CONFLICT (provider, model, task_type) DO UPDATE SET
+                    success_count = model_performance.success_count + ${successAdd},
+                    error_count   = model_performance.error_count   + ${errorAdd},
+                    total_latency_ms = model_performance.total_latency_ms + ${latencyAdd},
+                    last_updated  = ${now}
+            `;
         } catch (err) {
             this.logger.error({ err, provider, model, taskType }, 'Failed to record performance outcome');
         }
@@ -106,17 +82,17 @@ export class PerformanceLearningStore {
      * Get the routing weight for a specific model + task type.
      * Returns weight 1.0 (neutral) if no data exists.
      */
-    getWeight(provider: string, model: string, taskType: string): PerformanceWeight {
+    async getWeight(provider: string, model: string, taskType: string): Promise<PerformanceWeight> {
         try {
-            const row = this.getStmt.get(provider, model, taskType) as
-                | { provider: string; model: string; task_type: string; success_count: number; error_count: number; total_latency_ms: number }
-                | undefined;
-
-            if (!row) {
+            const rows = await this.sql<PerfRow[]>`
+                SELECT provider, model, task_type, success_count, error_count, total_latency_ms
+                FROM model_performance
+                WHERE provider = ${provider} AND model = ${model} AND task_type = ${taskType}
+            `;
+            if (!rows[0]) {
                 return this.neutralWeight(provider, model, taskType);
             }
-
-            return this.computeWeight(row);
+            return this.computeWeight(rows[0]);
         } catch (err) {
             this.logger.error({ err, provider, model, taskType }, 'Failed to get performance weight');
             return this.neutralWeight(provider, model, taskType);
@@ -126,17 +102,13 @@ export class PerformanceLearningStore {
     /**
      * Get all weights for a given task type. Used to sort an entire candidate list.
      */
-    getWeightsForTaskType(taskType: string): PerformanceWeight[] {
+    async getWeightsForTaskType(taskType: string): Promise<PerformanceWeight[]> {
         try {
-            const rows = this.getByTaskTypeStmt.all(taskType) as Array<{
-                provider: string;
-                model: string;
-                task_type: string;
-                success_count: number;
-                error_count: number;
-                total_latency_ms: number;
-            }>;
-
+            const rows = await this.sql<PerfRow[]>`
+                SELECT provider, model, task_type, success_count, error_count, total_latency_ms
+                FROM model_performance
+                WHERE task_type = ${taskType}
+            `;
             return rows.map(row => this.computeWeight(row));
         } catch (err) {
             this.logger.error({ err, taskType }, 'Failed to get performance weights for task type');
@@ -149,20 +121,19 @@ export class PerformanceLearningStore {
      * Multiplies all counts by decayFactor (e.g. 0.85).
      * After ~5 restarts, old data contributes <45%.
      */
-    applyDecay(decayFactor?: number): void {
+    async applyDecay(decayFactor?: number): Promise<void> {
         const factor = decayFactor ?? this.config.decayFactor;
         try {
-            this.db.exec(`
+            await this.sql`
                 UPDATE model_performance SET
-                    success_count = CAST(success_count * ${factor} AS INTEGER),
-                    error_count = CAST(error_count * ${factor} AS INTEGER),
-                    total_latency_ms = CAST(total_latency_ms * ${factor} AS INTEGER)
-            `);
-            // Clean up rows that have decayed to zero
-            this.db.exec(`
+                    success_count    = FLOOR(success_count::FLOAT    * ${factor}),
+                    error_count      = FLOOR(error_count::FLOAT      * ${factor}),
+                    total_latency_ms = FLOOR(total_latency_ms::FLOAT * ${factor})
+            `;
+            await this.sql`
                 DELETE FROM model_performance
                 WHERE success_count = 0 AND error_count = 0
-            `);
+            `;
             this.logger.info({ decayFactor: factor }, 'Performance learning data decayed');
         } catch (err) {
             this.logger.error({ err }, 'Failed to apply performance decay');
@@ -172,9 +143,9 @@ export class PerformanceLearningStore {
     /**
      * Reset all learning data. Admin escape hatch.
      */
-    reset(): void {
+    async reset(): Promise<void> {
         try {
-            this.db.exec('DELETE FROM model_performance');
+            await this.sql`DELETE FROM model_performance`;
             this.logger.info('Performance learning data reset');
         } catch (err) {
             this.logger.error({ err }, 'Failed to reset performance data');
@@ -184,10 +155,10 @@ export class PerformanceLearningStore {
     /**
      * Get the total number of tracked model+taskType combinations.
      */
-    getTrackedCount(): number {
+    async getTrackedCount(): Promise<number> {
         try {
-            const row = this.db.prepare('SELECT COUNT(*) as count FROM model_performance').get() as { count: number };
-            return row.count;
+            const rows = await this.sql<{ count: string }[]>`SELECT COUNT(*) AS count FROM model_performance`;
+            return Number(rows[0]?.count ?? 0);
         } catch {
             return 0;
         }
@@ -196,18 +167,15 @@ export class PerformanceLearningStore {
     /**
      * Get top performers (highest weight) across all task types.
      */
-    getTopPerformers(limit: number = 5): PerformanceWeight[] {
+    async getTopPerformers(limit: number = 5): Promise<PerformanceWeight[]> {
         try {
-            const rows = this.db.prepare(
-                'SELECT provider, model, task_type, success_count, error_count, total_latency_ms FROM model_performance WHERE success_count + error_count > 0 ORDER BY CAST(success_count AS REAL) / (success_count + error_count) DESC LIMIT ?',
-            ).all(limit) as Array<{
-                provider: string;
-                model: string;
-                task_type: string;
-                success_count: number;
-                error_count: number;
-                total_latency_ms: number;
-            }>;
+            const rows = await this.sql<PerfRow[]>`
+                SELECT provider, model, task_type, success_count, error_count, total_latency_ms
+                FROM model_performance
+                WHERE success_count + error_count > 0
+                ORDER BY success_count::REAL / (success_count + error_count) DESC
+                LIMIT ${limit}
+            `;
             return rows.map(row => this.computeWeight(row));
         } catch {
             return [];
@@ -217,18 +185,15 @@ export class PerformanceLearningStore {
     /**
      * Get worst performers (lowest weight) across all task types.
      */
-    getWorstPerformers(limit: number = 5): PerformanceWeight[] {
+    async getWorstPerformers(limit: number = 5): Promise<PerformanceWeight[]> {
         try {
-            const rows = this.db.prepare(
-                'SELECT provider, model, task_type, success_count, error_count, total_latency_ms FROM model_performance WHERE success_count + error_count > 0 ORDER BY CAST(success_count AS REAL) / (success_count + error_count) ASC LIMIT ?',
-            ).all(limit) as Array<{
-                provider: string;
-                model: string;
-                task_type: string;
-                success_count: number;
-                error_count: number;
-                total_latency_ms: number;
-            }>;
+            const rows = await this.sql<PerfRow[]>`
+                SELECT provider, model, task_type, success_count, error_count, total_latency_ms
+                FROM model_performance
+                WHERE success_count + error_count > 0
+                ORDER BY success_count::REAL / (success_count + error_count) ASC
+                LIMIT ${limit}
+            `;
             return rows.map(row => this.computeWeight(row));
         } catch {
             return [];
@@ -237,22 +202,20 @@ export class PerformanceLearningStore {
 
     // ─── Private helpers ───
 
-    private computeWeight(row: {
-        provider: string;
-        model: string;
-        task_type: string;
-        success_count: number;
-        error_count: number;
-        total_latency_ms: number;
-    }): PerformanceWeight {
-        const total = row.success_count + row.error_count;
+    private computeWeight(row: PerfRow): PerformanceWeight {
+        // postgres returns bigint columns as strings — coerce to number
+        const successCount = Number(row.success_count);
+        const errorCount = Number(row.error_count);
+        const totalLatencyMs = Number(row.total_latency_ms);
+
+        const total = successCount + errorCount;
         if (total === 0) {
             return this.neutralWeight(row.provider, row.model, row.task_type);
         }
 
-        const successRate = row.success_count / total;
-        const avgLatencyMs = row.success_count > 0
-            ? row.total_latency_ms / row.success_count
+        const successRate = successCount / total;
+        const avgLatencyMs = successCount > 0
+            ? totalLatencyMs / successCount
             : PerformanceLearningStore.MEDIAN_LATENCY_MS;
 
         // Latency factor: faster than median = bonus, slower = penalty

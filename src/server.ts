@@ -114,8 +114,9 @@ export async function createServer(config: PharosConfig): Promise<{
     // ─── Initialize Tracking ───
     let tracker: TrackingStore | null = null;
     if (config.tracking.enabled) {
-        tracker = new TrackingStore(config.tracking.dbPath, logger, config.tracking.retentionDays);
-        logger.info(`Cost tracking: enabled (${config.tracking.dbPath})`);
+        const { getSql } = await import('./db/index.js');
+        tracker = new TrackingStore({ sql: getSql(), logger });
+        logger.info(`Cost tracking: enabled (Postgres)`);
     }
 
     // ─── Initialize Wallet (Wave 5 / Phase 8.2) ───
@@ -124,19 +125,18 @@ export async function createServer(config: PharosConfig): Promise<{
     // R1-refined schema (INTEGER cents, idempotent stripe events, multi-tenant placeholders).
     let wallet: WalletStore | null = null;
     if (config.tracking.enabled) {
-        wallet = new WalletStore(config.tracking.dbPath, logger);
-        logger.info(`Wallet: enabled (Phase 8.2 — schema initialized at ${config.tracking.dbPath})`);
+        const { getSql } = await import('./db/index.js');
+        wallet = new WalletStore({ sql: getSql(), logger });
+        logger.info(`Wallet: enabled (Phase 8.2 — Postgres)`);
     }
 
     // ─── Initialize Performance Learning ───
     let learningStore: PerformanceLearningStore | null = null;
     if (config.performanceLearning?.enabled && tracker) {
-        const Database = (await import('better-sqlite3')).default;
-        const learningDb = new Database(config.tracking.dbPath);
-        learningDb.pragma('journal_mode = WAL');
-        learningStore = new PerformanceLearningStore(learningDb, logger, config.performanceLearning);
-        learningStore.applyDecay();
-        logger.info(`Performance learning: enabled (${learningStore.getTrackedCount()} models tracked)`);
+        const { getSql } = await import('./db/index.js');
+        learningStore = new PerformanceLearningStore(getSql(), logger, config.performanceLearning);
+        await learningStore.applyDecay();
+        logger.info(`Performance learning: enabled (${await learningStore.getTrackedCount()} models tracked)`);
     }
 
     // ─── Initialize Phase 2 Metrics ───

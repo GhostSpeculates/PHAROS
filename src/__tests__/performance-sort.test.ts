@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import postgres from 'postgres';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { sortByPerformance } from '../router/failover.js';
 import type { ModelCandidate } from '../router/failover.js';
 import { PerformanceLearningStore } from '../learning/performance-store.js';
 import type { PerformanceLearningConfig } from '../learning/performance-store.js';
 import type { Logger } from '../utils/logger.js';
+import { truncateAll } from './_helpers/test-db.js';
 
 function makeLogger(): Logger {
     return {
@@ -29,70 +30,74 @@ function makeConfig(): PerformanceLearningConfig {
 }
 
 describe('sortByPerformance', () => {
-    let db: Database.Database;
+    let sql: ReturnType<typeof postgres>;
     let store: PerformanceLearningStore;
 
-    beforeEach(() => {
-        db = new Database(':memory:');
-        store = new PerformanceLearningStore(db, makeLogger(), makeConfig());
+    beforeAll(() => {
+        sql = postgres(process.env.DATABASE_URL!);
     });
 
-    afterEach(() => {
-        db.close();
+    afterAll(async () => {
+        await sql.end();
     });
 
-    it('returns candidates unchanged when store is null', () => {
+    beforeEach(async () => {
+        await truncateAll(sql);
+        store = new PerformanceLearningStore(sql, makeLogger(), makeConfig());
+    });
+
+    it('returns candidates unchanged when store is null', async () => {
         const candidates: ModelCandidate[] = [
             { provider: 'groq', model: 'llama', tier: 'free' },
             { provider: 'google', model: 'gemini', tier: 'free' },
         ];
-        const result = sortByPerformance(candidates, 'code', null);
+        const result = await sortByPerformance(candidates, 'code', null);
         expect(result).toEqual(candidates);
     });
 
-    it('returns candidates unchanged when store is undefined', () => {
+    it('returns candidates unchanged when store is undefined', async () => {
         const candidates: ModelCandidate[] = [
             { provider: 'groq', model: 'llama', tier: 'free' },
         ];
-        const result = sortByPerformance(candidates, 'code', undefined);
+        const result = await sortByPerformance(candidates, 'code', undefined);
         expect(result).toEqual(candidates);
     });
 
-    it('returns candidates unchanged when taskType is undefined', () => {
+    it('returns candidates unchanged when taskType is undefined', async () => {
         const candidates: ModelCandidate[] = [
             { provider: 'groq', model: 'llama', tier: 'free' },
         ];
-        const result = sortByPerformance(candidates, undefined, store);
+        const result = await sortByPerformance(candidates, undefined, store);
         expect(result).toEqual(candidates);
     });
 
-    it('returns candidates unchanged when no learning data exists', () => {
+    it('returns candidates unchanged when no learning data exists', async () => {
         const candidates: ModelCandidate[] = [
             { provider: 'groq', model: 'llama', tier: 'free' },
             { provider: 'google', model: 'gemini', tier: 'free' },
         ];
-        const result = sortByPerformance(candidates, 'code', store);
+        const result = await sortByPerformance(candidates, 'code', store);
         expect(result).toEqual(candidates);
     });
 
-    it('returns single candidate unchanged', () => {
+    it('returns single candidate unchanged', async () => {
         const candidates: ModelCandidate[] = [
             { provider: 'groq', model: 'llama', tier: 'free' },
         ];
-        const result = sortByPerformance(candidates, 'code', store);
+        const result = await sortByPerformance(candidates, 'code', store);
         expect(result).toEqual(candidates);
     });
 
-    it('promotes higher-weight candidate within same tier', () => {
+    it('promotes higher-weight candidate within same tier', async () => {
         // groq has many failures for code tasks
         for (let i = 0; i < 20; i++) {
-            store.recordOutcome('groq', 'llama', 'code', false, 0);
+            await store.recordOutcome('groq', 'llama', 'code', false, 0);
         }
-        store.recordOutcome('groq', 'llama', 'code', true, 2000);
+        await store.recordOutcome('groq', 'llama', 'code', true, 2000);
 
         // google has all successes
         for (let i = 0; i < 20; i++) {
-            store.recordOutcome('google', 'gemini', 'code', true, 1000);
+            await store.recordOutcome('google', 'gemini', 'code', true, 1000);
         }
 
         const candidates: ModelCandidate[] = [
@@ -100,19 +105,19 @@ describe('sortByPerformance', () => {
             { provider: 'google', model: 'gemini', tier: 'free' },
         ];
 
-        const result = sortByPerformance(candidates, 'code', store);
+        const result = await sortByPerformance(candidates, 'code', store);
         expect(result[0].provider).toBe('google');
         expect(result[1].provider).toBe('groq');
     });
 
-    it('preserves tier boundaries', () => {
+    it('preserves tier boundaries', async () => {
         // Bad free-tier model
         for (let i = 0; i < 20; i++) {
-            store.recordOutcome('groq', 'llama', 'code', false, 0);
+            await store.recordOutcome('groq', 'llama', 'code', false, 0);
         }
         // Good premium model
         for (let i = 0; i < 20; i++) {
-            store.recordOutcome('anthropic', 'claude', 'code', true, 500);
+            await store.recordOutcome('anthropic', 'claude', 'code', true, 500);
         }
 
         const candidates: ModelCandidate[] = [
@@ -120,22 +125,22 @@ describe('sortByPerformance', () => {
             { provider: 'anthropic', model: 'claude', tier: 'premium' },
         ];
 
-        const result = sortByPerformance(candidates, 'code', store);
+        const result = await sortByPerformance(candidates, 'code', store);
         // Free tier should still come first (tier order preserved)
         expect(result[0].tier).toBe('free');
         expect(result[1].tier).toBe('premium');
     });
 
-    it('sorts within multiple tier groups independently', () => {
+    it('sorts within multiple tier groups independently', async () => {
         // In free tier: google is better
         for (let i = 0; i < 20; i++) {
-            store.recordOutcome('google', 'gemini', 'code', true, 500);
-            store.recordOutcome('groq', 'llama', 'code', false, 0);
+            await store.recordOutcome('google', 'gemini', 'code', true, 500);
+            await store.recordOutcome('groq', 'llama', 'code', false, 0);
         }
         // In premium tier: openai is better
         for (let i = 0; i < 20; i++) {
-            store.recordOutcome('openai', 'gpt-4o', 'code', true, 500);
-            store.recordOutcome('anthropic', 'claude', 'code', false, 0);
+            await store.recordOutcome('openai', 'gpt-4o', 'code', true, 500);
+            await store.recordOutcome('anthropic', 'claude', 'code', false, 0);
         }
 
         const candidates: ModelCandidate[] = [
@@ -145,39 +150,39 @@ describe('sortByPerformance', () => {
             { provider: 'openai', model: 'gpt-4o', tier: 'premium' },
         ];
 
-        const result = sortByPerformance(candidates, 'code', store);
+        const result = await sortByPerformance(candidates, 'code', store);
         expect(result[0].provider).toBe('google');   // free tier winner
         expect(result[1].provider).toBe('groq');      // free tier loser
         expect(result[2].provider).toBe('openai');    // premium winner
         expect(result[3].provider).toBe('anthropic'); // premium loser
     });
 
-    it('unknown models keep weight 1.0 and position', () => {
+    it('unknown models keep weight 1.0 and position', async () => {
         // Only groq has data
         for (let i = 0; i < 20; i++) {
-            store.recordOutcome('groq', 'llama', 'code', false, 0);
+            await store.recordOutcome('groq', 'llama', 'code', false, 0);
         }
-        store.recordOutcome('groq', 'llama', 'code', true, 2000);
+        await store.recordOutcome('groq', 'llama', 'code', true, 2000);
 
         const candidates: ModelCandidate[] = [
             { provider: 'groq', model: 'llama', tier: 'free' },
             { provider: 'unknown', model: 'new-model', tier: 'free' },
         ];
 
-        const result = sortByPerformance(candidates, 'code', store);
+        const result = await sortByPerformance(candidates, 'code', store);
         // unknown model (weight 1.0) should be first since groq has low weight
         expect(result[0].provider).toBe('unknown');
     });
 
-    it('uses task-type-specific data only', () => {
+    it('uses task-type-specific data only', async () => {
         // groq is great at math but bad at code
         for (let i = 0; i < 20; i++) {
-            store.recordOutcome('groq', 'llama', 'math', true, 500);
-            store.recordOutcome('groq', 'llama', 'code', false, 0);
+            await store.recordOutcome('groq', 'llama', 'math', true, 500);
+            await store.recordOutcome('groq', 'llama', 'code', false, 0);
         }
         // google is great at code
         for (let i = 0; i < 20; i++) {
-            store.recordOutcome('google', 'gemini', 'code', true, 500);
+            await store.recordOutcome('google', 'gemini', 'code', true, 500);
         }
 
         const candidates: ModelCandidate[] = [
@@ -186,35 +191,34 @@ describe('sortByPerformance', () => {
         ];
 
         // For code tasks, google should win
-        const codeResult = sortByPerformance(candidates, 'code', store);
+        const codeResult = await sortByPerformance(candidates, 'code', store);
         expect(codeResult[0].provider).toBe('google');
     });
 
-    it('handles empty candidate list', () => {
-        const result = sortByPerformance([], 'code', store);
+    it('handles empty candidate list', async () => {
+        const result = await sortByPerformance([], 'code', store);
         expect(result).toEqual([]);
     });
 
-    it('returns candidates unchanged on store error', () => {
-        db.close(); // Force errors
-        const db2 = new Database(':memory:');
-        const store2 = new PerformanceLearningStore(db2, makeLogger(), makeConfig());
-        db2.close(); // Close to force errors
+    it('returns candidates unchanged on store error', async () => {
+        const badSql = postgres('postgresql://bad:bad@localhost:9999/bad', { max: 1, connect_timeout: 1 });
+        const store2 = new PerformanceLearningStore(badSql, makeLogger(), makeConfig());
 
         const candidates: ModelCandidate[] = [
             { provider: 'groq', model: 'llama', tier: 'free' },
             { provider: 'google', model: 'gemini', tier: 'free' },
         ];
 
-        const result = sortByPerformance(candidates, 'code', store2);
+        const result = await sortByPerformance(candidates, 'code', store2);
         expect(result).toEqual(candidates);
+        await badSql.end({ timeout: 1 }).catch(() => {});
     });
 
-    it('handles candidates with same weight (stable sort)', () => {
+    it('handles candidates with same weight (stable sort)', async () => {
         // Both models have identical performance
         for (let i = 0; i < 20; i++) {
-            store.recordOutcome('groq', 'llama', 'code', true, 1000);
-            store.recordOutcome('google', 'gemini', 'code', true, 1000);
+            await store.recordOutcome('groq', 'llama', 'code', true, 1000);
+            await store.recordOutcome('google', 'gemini', 'code', true, 1000);
         }
 
         const candidates: ModelCandidate[] = [
@@ -222,7 +226,7 @@ describe('sortByPerformance', () => {
             { provider: 'google', model: 'gemini', tier: 'free' },
         ];
 
-        const result = sortByPerformance(candidates, 'code', store);
+        const result = await sortByPerformance(candidates, 'code', store);
         // With identical weights, order should be preserved
         expect(result).toHaveLength(2);
     });

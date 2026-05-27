@@ -2,7 +2,7 @@
  * instrument.ts — Sentry initialization.
  *
  * Must be loaded BEFORE all other imports so OpenTelemetry can patch
- * `http`, `fetch`, `better-sqlite3`, etc. Run with --import flag:
+ * `http`, `fetch`, `pg`, etc. Run with --import flag:
  *
  *   dev:  tsx watch --import ./src/instrument.ts src/index.ts
  *   prod: node --import ./dist/instrument.js dist/index.js

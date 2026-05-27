@@ -29,7 +29,7 @@ describe('router snapshot (pre-sync, default config)', () => {
 
     const router = new ModelRouter(config, registry, logger);
 
-    it('tier 2 routes to a free-tier model', () => {
+    it('tier 2 routes to a free-tier model', async () => {
         const c: ClassificationResult = {
             score: 2,
             type: 'conversation',
@@ -37,12 +37,12 @@ describe('router snapshot (pre-sync, default config)', () => {
             isFallback: false,
             classifierProvider: 'static',
         };
-        const decision = router.route(c);
+        const decision = await router.route(c);
         const tierModels = config.tiers.free.models.map(m => `${m.provider}:${m.model}`);
         expect(tierModels).toContain(`${decision.provider}:${decision.model}`);
     });
 
-    it('tier 5 routes to an economical-tier model', () => {
+    it('tier 5 routes to an economical-tier model', async () => {
         const c: ClassificationResult = {
             score: 5,
             type: 'conversation',
@@ -50,12 +50,12 @@ describe('router snapshot (pre-sync, default config)', () => {
             isFallback: false,
             classifierProvider: 'static',
         };
-        const decision = router.route(c);
+        const decision = await router.route(c);
         const tierModels = config.tiers.economical.models.map(m => `${m.provider}:${m.model}`);
         expect(tierModels).toContain(`${decision.provider}:${decision.model}`);
     });
 
-    it('tier 10 routes to frontier-tier model', () => {
+    it('tier 10 routes to frontier-tier model', async () => {
         const c: ClassificationResult = {
             score: 10,
             type: 'reasoning',
@@ -63,7 +63,7 @@ describe('router snapshot (pre-sync, default config)', () => {
             isFallback: false,
             classifierProvider: 'static',
         };
-        const decision = router.route(c);
+        const decision = await router.route(c);
         const tierModels = config.tiers.frontier.models.map(m => `${m.provider}:${m.model}`);
         expect(tierModels).toContain(`${decision.provider}:${decision.model}`);
     });
